@@ -7,6 +7,7 @@ import {
 import { createNet, makeRoomCode } from './net.js';
 import { sfx, setSoundEnabled, isSoundEnabled, unlockAudio } from './audio.js';
 import { initBossMode } from './boss.js';
+import { initExcelMode } from './excel.js';
 import {
   $, buildBoard, paintMyBoard, paintEnemyBoard, renderDock,
   logLine, toast, setScreen, esc, cellName,
@@ -39,6 +40,7 @@ const S = {
   specLast: { host: null, guest: null },
   specReveal: { host: null, guest: null },
   peerCount: 1,
+  gameId: 0,               // 每開一局 +1，讓 Excel 模式的終局對話框每局只跳一次
 };
 
 const opposite = side => (side === 'host' ? 'guest' : 'host');
@@ -48,7 +50,8 @@ const nameOf = side => S.names[side] || (side === 'host' ? '房主' : '挑戰者
 
 let net = null;
 let boards = { setup: null, enemy: null, mine: null };
-let boss = null;
+let boss = null;   // 假 VSCode（純遮羞布）
+let excel = null;  // 假 Excel（可以在裡面打）
 
 // ── 網路事件 ─────────────────────────────────────────
 function onStatus(ev) {
@@ -458,6 +461,7 @@ function startBattle(first, variant) {
   S.phase = 'battle';
   S.over = null;
   S.rematch = { me: false, them: false };
+  S.gameId++;
   enterBattle();
   sysLog(`開戰！<b>${esc(nameOf(first))}</b> 先手${variant === 'hit-again' ? '（命中可連射）' : ''}`);
   sfx('join');
@@ -711,6 +715,7 @@ function render() {
   $('peerCount').textContent = `👥 ${S.peerCount}`;
   // 上班模式的暗號：輪到我 = 狀態列多一個 error。
   boss?.setSignal(isMyTurn());
+  excel?.update();
 
   if (S.phase === 'setup') {
     renderDock($('shipDock'), S.myFleet, S.selectedShip);
@@ -828,19 +833,58 @@ function init() {
     if (on) unlockAudio();
   });
 
-  // 進上班模式先靜音，出來照原本的設定還原。
-  let soundBeforeBoss = true;
-  boss = initBossMode({
+  // 進任一種上班模式先靜音，出來照原本的設定還原。
+  let soundBeforeWork = true;
+  const workHooks = {
     onEnter() {
-      soundBeforeBoss = isSoundEnabled();
+      soundBeforeWork = isSoundEnabled();
       setSoundEnabled(false);
     },
     onExit() {
-      setSoundEnabled(soundBeforeBoss);
-      if (soundBeforeBoss) unlockAudio();
+      setSoundEnabled(soundBeforeWork);
+      if (soundBeforeWork) unlockAudio();
     },
+  };
+  boss = initBossMode(workHooks);
+  excel = initExcelMode({
+    ...workHooks,
+    getState: () => ({
+      role: S.role,
+      phase: S.phase,
+      turn: S.turn,
+      myTurn: isMyTurn(),
+      myFleet: S.myFleet,
+      incoming: S.incoming,
+      enemy: S.enemy,
+      enemyReveal: S.enemyReveal,
+      spec: S.spec,
+      specReveal: S.specReveal,
+      over: S.over,
+      gameId: S.gameId,
+      readyMe: !!S.ready[S.role],
+      placed: isFleetPlaced(S.myFleet),
+      placedCount: S.myFleet.filter(s => s.x != null).length,
+      remaining: remainingShips(S.myFleet),
+    }),
+    onFire: fire,
+    onReady: markReady,
+    onRandom() {
+      S.myFleet = randomFleet();
+      S.selectedShip = null;
+      render();
+    },
+    onRematch: requestRematch,
   });
-  $('btnBoss').addEventListener('click', () => boss.enter());
+  $('btnExcel').addEventListener('click', () => { boss.exit(); excel.enter(); });
+  $('btnBoss').addEventListener('click', () => { excel.exit(); boss.enter(); });
+  // Esc：在上班模式裡就退出，不在就進 Excel（可玩的那個）。
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    if (boss.active) boss.exit();
+    else if (excel.active) excel.exit();
+    else excel.enter();
+  });
 
   $('btnLeave').addEventListener('click', () => {
     if (S.phase === 'lobby' || confirm('確定離開房間？')) leaveRoom();

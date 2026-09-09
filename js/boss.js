@@ -324,13 +324,7 @@ export function initBossMode({ onEnter, onExit }) {
     onExit?.();
   }
 
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      armed ? exit() : enter();
-    }
-  });
-
+  // 熱鍵由 main.js 統一管（Esc 要在幾種上班模式之間協調）。
   renderAll();
   setSignal(false);
   return { enter, exit, toggle: () => (armed ? exit() : enter()), setSignal, get active() { return armed; } };
