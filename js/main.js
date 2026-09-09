@@ -896,13 +896,39 @@ function init() {
   });
   $('btnExcel').addEventListener('click', () => { boss.exit(); excel.enter(); });
   $('btnBoss').addEventListener('click', () => { excel.exit(); boss.enter(); });
-  // Esc：在上班模式裡就退出，不在就進 Excel（可玩的那個）。
+  // 使用教學
+  const help = $('helpModal');
+  const openHelp = (sec = 'start') => { showHelpSection(sec); help.hidden = false; };
+  const closeHelp = () => { help.hidden = true; };
+  function showHelpSection(sec) {
+    for (const b of $('helpNav').querySelectorAll('button')) b.classList.toggle('active', b.dataset.sec === sec);
+    for (const s of $('helpContent').querySelectorAll('section')) s.hidden = s.dataset.sec !== sec;
+    $('helpContent').scrollTop = 0;
+  }
+  $('helpNav').addEventListener('click', e => {
+    const b = e.target.closest('button[data-sec]');
+    if (b) showHelpSection(b.dataset.sec);
+  });
+  $('btnHelp').addEventListener('click', () => openHelp());
+  $('btnHelpLobby').addEventListener('click', () => openHelp());
+  $('btnHelpClose').addEventListener('click', closeHelp);
+  help.addEventListener('click', e => { if (e.target === help) closeHelp(); });
+
+  // Esc：教學開著先關教學；在上班模式裡就退出；都不是就進 Excel（可玩的那個）。
+  // ?：開教學（不在輸入框、不在上班模式時）。
   document.addEventListener('keydown', e => {
-    if (e.key !== 'Escape') return;
-    e.preventDefault();
-    if (boss.active) boss.exit();
-    else if (excel.active) excel.exit();
-    else excel.enter();
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (!help.hidden) closeHelp();
+      else if (boss.active) boss.exit();
+      else if (excel.active) excel.exit();
+      else excel.enter();
+      return;
+    }
+    if (e.key === '?' && e.target.tagName !== 'INPUT' && !boss.active && !excel.active) {
+      e.preventDefault();
+      help.hidden ? openHelp() : closeHelp();
+    }
   });
 
   $('btnLeave').addEventListener('click', () => {

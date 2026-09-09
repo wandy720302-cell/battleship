@@ -21,6 +21,7 @@
     <span class="chip chip-quiet" id="peerCount" title="在場人數">👥 1</span>
   </div>
   <div class="topbar-actions">
+    <button class="icon-btn" id="btnHelp" title="使用教學（?）">❓</button>
     <button class="icon-btn" id="btnExcel" title="上班模式：Excel，可以直接在裡面打（Esc）">📊</button>
     <button class="icon-btn" id="btnBoss" title="上班模式：VSCode，純遮羞布">💼</button>
     <button class="icon-btn" id="btnSound" title="音效開關" aria-pressed="true">🔊</button>
@@ -59,6 +60,7 @@
 
     <p class="lobby-error" id="lobbyError" hidden></p>
     <p class="lobby-note">連線是瀏覽器對瀏覽器直連，沒有伺服器保存任何棋局。<br>老闆走過來按 <kbd>Esc</kbd>，變成 Excel 還能繼續打。</p>
+    <button class="btn btn-ghost btn-sm btn-block" id="btnHelpLobby" type="button">📖 使用教學</button>
   </div>
 </main>
 
@@ -154,6 +156,121 @@
       <button class="btn btn-ghost" id="btnBackLobby">離開房間</button>
     </div>
     <p class="overlay-note" id="rematchNote" hidden></p>
+  </div>
+</div>
+
+<!-- ── 使用教學 ─────────────────────────────────────── -->
+<div class="help" id="helpModal" hidden>
+  <div class="help-card" role="dialog" aria-labelledby="helpTitle">
+    <header class="help-head">
+      <h2 id="helpTitle">📖 使用教學</h2>
+      <button class="icon-btn" id="btnHelpClose" title="關閉（Esc）">✕</button>
+    </header>
+    <div class="help-body">
+      <nav class="help-nav" id="helpNav">
+        <button class="active" data-sec="start">快速開始</button>
+        <button data-sec="setup">擺船</button>
+        <button data-sec="battle">對戰</button>
+        <button data-sec="social">聊天與觀戰</button>
+        <button data-sec="excel">上班模式 · Excel</button>
+        <button data-sec="vscode">上班模式 · VSCode</button>
+        <button data-sec="trouble">疑難排解</button>
+      </nav>
+      <div class="help-content" id="helpContent">
+
+        <section data-sec="start">
+          <h3>快速開始</h3>
+          <ol>
+            <li>輸入代號，按 <b>開新房間</b></li>
+            <li>點頂欄的房間碼 🔗 複製邀請連結，丟給朋友</li>
+            <li>朋友點連結 → 房間碼自動填好 → <b>加入</b></li>
+            <li>兩邊各自擺好五艘船，按 <b>準備完成</b></li>
+            <li>隨機決定先手，開打。把對方五艘船全打沉就贏</li>
+          </ol>
+          <p class="help-tip">房主可以在擺船階段勾「命中後可以再開一槍」，會即時同步給對手。</p>
+        </section>
+
+        <section data-sec="setup" hidden>
+          <h3>擺船</h3>
+          <table class="help-keys">
+            <tr><td>點船塢的船 → 點棋盤</td><td>放下（自動跳下一艘）</td></tr>
+            <tr><td>從船塢拖到棋盤</td><td>放下</td></tr>
+            <tr><td><kbd>R</kbd>、右鍵、⟳ 按鈕</td><td>旋轉（已放的船就地轉，轉不進去會退回）</td></tr>
+            <tr><td>點棋盤上的船</td><td>撿起來重擺</td></tr>
+            <tr><td>🎲 隨機部署</td><td>一鍵全放</td></tr>
+            <tr><td>↺ 全部收回</td><td>清空重來</td></tr>
+          </table>
+          <p class="help-tip">五艘：航空母艦 5、戰艦 4、巡洋艦 3、潛水艇 3、驅逐艦 2。船不能重疊，可以相鄰。</p>
+        </section>
+
+        <section data-sec="battle" hidden>
+          <h3>對戰</h3>
+          <ul>
+            <li>輪到你時，上方橫幅變青色、敵方海域亮起，游標變準星</li>
+            <li>點一格開火。<span class="help-hit">✕</span> 命中、<span class="help-miss">●</span> 落空、<span class="help-sunk">紅底</span> 擊沉</li>
+            <li>金框是最新一發，戰報在右側即時更新</li>
+            <li>連射規則開啟時，命中可以繼續開火，落空才換人</li>
+            <li>終局會揭曉雙方船位；按 <b>再來一局</b>，對方也按了就重新擺船</li>
+          </ul>
+        </section>
+
+        <section data-sec="social" hidden>
+          <h3>聊天與觀戰</h3>
+          <ul>
+            <li>右側面板切到 <b>聊天</b> 分頁；有新訊息會亮小圓點</li>
+            <li>想看戲的人用同一個邀請連結，勾「以觀戰身分進入」，可以看兩邊海域和聊天，不能出手</li>
+            <li>一間房只有兩位玩家，第三個人進來會被要求改觀戰</li>
+          </ul>
+        </section>
+
+        <section data-sec="excel" hidden>
+          <h3>上班模式 · Excel（可以在裡面打）</h3>
+          <p>按 <kbd>Esc</kbd> 或頂欄 📊，整頁變成 <em>Q3_Forecast.xlsx</em>，分頁標題、favicon 一起換，自動靜音。再按 <kbd>Esc</kbd> 回來。</p>
+          <h4>怎麼看</h4>
+          <ul>
+            <li>左表 <b>Forecast</b> = 敵方海域，右表 <b>Actual</b> = 我方（淡藍格是船）</li>
+            <li>命中 = <span class="help-hit">紅字負數</span>、落空 = <b>-</b>、擊沉 = <span class="help-sunk">淺紅底深紅字</span></li>
+            <li>狀態列左邊 <b>Ready</b> = 輪到你、<b>Calculating…</b> = 等對手</li>
+            <li>右邊 <b>Sum</b> = 對方沉幾艘、<b>Count</b> = 你剩幾艘</li>
+          </ul>
+          <h4>擺船（游標在 Actual 表）</h4>
+          <table class="help-keys">
+            <tr><td>方向鍵</td><td>移動，虛線框預覽這艘船；擺不下變紅</td></tr>
+            <tr><td><kbd>Space</kbd></td><td>旋轉</td></tr>
+            <tr><td><kbd>Enter</kbd></td><td>放下（自動換下一艘）；全放好後 = 準備完成</td></tr>
+            <tr><td><kbd>Delete</kbd></td><td>撿起游標下的船</td></tr>
+            <tr><td><kbd>F9</kbd></td><td>隨機部署</td></tr>
+          </table>
+          <h4>對戰（游標在 Forecast 表）</h4>
+          <table class="help-keys">
+            <tr><td>方向鍵</td><td>移動綠框</td></tr>
+            <tr><td><kbd>Enter</kbd></td><td>開火</td></tr>
+            <tr><td>滑鼠</td><td>點一下選格、再點一下開火</td></tr>
+          </table>
+          <p class="help-tip">終局會跳一個「Microsoft Excel」對話框，OK = 再來一局。Ribbon 的 <b>Help</b> 分頁裡也有這份快速鍵表，在偽裝裡查不會破功。</p>
+        </section>
+
+        <section data-sec="vscode" hidden>
+          <h3>上班模式 · VSCode（純遮羞布）</h3>
+          <ul>
+            <li>頂欄 💼 進入，看起來在寫 NestJS。分頁、檔案樹可以點</li>
+            <li>只能偷看回合：輪到你時，狀態列的錯誤數從 <b>⊗ 0</b> 變 <b>⊗ 1</b></li>
+            <li>要出手得按 <kbd>Esc</kbd> 回來，或改用 Excel 模式</li>
+          </ul>
+        </section>
+
+        <section data-sec="trouble" hidden>
+          <h3>疑難排解</h3>
+          <ul>
+            <li><b>連不上 / 找不到房間</b>：配對靠公開的 PeerJS 伺服器，偶爾抽風，房主重整再開一次房。公司網路擋 WebRTC 的話換網路</li>
+            <li><b>對手斷線</b>：這局作廢。對方重新用連結進房會直接開新局</li>
+            <li><b>沒聲音</b>：瀏覽器要先有點擊才准出聲；看頂欄 🔊 有沒有被關掉。上班模式會自動靜音</li>
+            <li><b>手機</b>：可以玩，擺船用點的比拖的順</li>
+          </ul>
+        </section>
+
+      </div>
+    </div>
   </div>
 </div>
 

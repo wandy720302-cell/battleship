@@ -53,7 +53,7 @@ export function initExcelMode(hooks) {
     </div>
     <div class="xl-ribbon-tabs">
       <span>File</span><span class="active">Home</span><span>Insert</span><span>Page Layout</span>
-      <span>Formulas</span><span>Data</span><span>Review</span><span>View</span><span>Help</span>
+      <span>Formulas</span><span>Data</span><span>Review</span><span>View</span><span id="xlHelpTab">Help</span>
     </div>
     <div class="xl-ribbon">
       <div class="xl-group"><div class="xl-group-body"><span class="xl-big">&#128203;</span><span class="xl-small">&#9986;<br>&#128203;<br>&#128396;</span></div><div class="xl-group-label">Clipboard</div></div>
@@ -70,8 +70,43 @@ export function initExcelMode(hooks) {
       <span class="xl-fx">&#10005; &#10003; <i>fx</i></span>
       <span class="xl-fbar" id="xlFormula"></span>
     </div>
-    <div class="xl-sheet-wrap">
-      <table class="xl-sheet" id="xlSheet"></table>
+    <div class="xl-main">
+      <div class="xl-sheet-wrap">
+        <table class="xl-sheet" id="xlSheet"></table>
+      </div>
+      <aside class="xl-help" id="xlHelp" hidden>
+        <div class="xl-help-head"><span>Help</span><span class="xl-help-close" id="xlHelpClose">&#10005;</span></div>
+        <div class="xl-help-search">&#128269; Search help</div>
+        <div class="xl-help-body">
+          <h5>Keyboard shortcuts — Data entry (Actual)</h5>
+          <table>
+            <tr><td><kbd>&#8593;</kbd><kbd>&#8595;</kbd><kbd>&#8592;</kbd><kbd>&#8594;</kbd></td><td>移動游標，虛線框預覽目前這艘船；擺不下變紅</td></tr>
+            <tr><td><kbd>Space</kbd></td><td>旋轉</td></tr>
+            <tr><td><kbd>Enter</kbd></td><td>放下，自動換下一艘；五艘都放好後 = 準備完成</td></tr>
+            <tr><td><kbd>Delete</kbd></td><td>撿起游標下的船</td></tr>
+            <tr><td><kbd>F9</kbd></td><td>Recalculate — 隨機部署</td></tr>
+          </table>
+          <h5>Keyboard shortcuts — Navigation (Forecast)</h5>
+          <table>
+            <tr><td><kbd>&#8593;</kbd><kbd>&#8595;</kbd><kbd>&#8592;</kbd><kbd>&#8594;</kbd></td><td>移動綠框</td></tr>
+            <tr><td><kbd>Enter</kbd></td><td>開火（點同一格兩下也行）</td></tr>
+            <tr><td><kbd>Esc</kbd></td><td>回到遊戲畫面</td></tr>
+          </table>
+          <h5>Cell formats</h5>
+          <table>
+            <tr><td><span style="color:#c00000">(8,730)</span></td><td>命中</td></tr>
+            <tr><td>-</td><td>落空</td></tr>
+            <tr><td><span style="background:#ffc7ce;color:#9c0006;font-weight:700;padding:0 4px">(8,730)</span></td><td>擊沉</td></tr>
+            <tr><td><span style="background:#ddebf7;padding:0 4px">4,097</span></td><td>自己的船</td></tr>
+          </table>
+          <h5>Status bar</h5>
+          <table>
+            <tr><td><b>Ready</b></td><td>輪到你</td></tr>
+            <tr><td><b>Calculating…</b></td><td>等對手</td></tr>
+            <tr><td><b>Sum</b> / <b>Count</b></td><td>對方沉幾艘 / 你剩幾艘</td></tr>
+          </table>
+        </div>
+      </aside>
     </div>
     <div class="xl-tabs">
       <span class="xl-nav">&#9664; &#9654;</span>
@@ -360,6 +395,11 @@ export function initExcelMode(hooks) {
     }
   }
   document.addEventListener('keydown', onKey);
+
+  // Ribbon 的 Help 分頁：Excel 風格的快速鍵側欄，在偽裝裡查教學不破功。
+  const helpPane = root.querySelector('#xlHelp');
+  root.querySelector('#xlHelpTab').addEventListener('click', () => { helpPane.hidden = !helpPane.hidden; });
+  root.querySelector('#xlHelpClose').addEventListener('click', () => { helpPane.hidden = true; });
 
   root.querySelector('#xlDialogOk').addEventListener('click', () => {
     root.querySelector('#xlDialog').hidden = true;
