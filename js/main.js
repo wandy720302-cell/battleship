@@ -6,6 +6,7 @@ import {
 } from './game.js';
 import { createNet, makeRoomCode } from './net.js';
 import { sfx, setSoundEnabled, isSoundEnabled, unlockAudio } from './audio.js';
+import { initBossMode } from './boss.js';
 import {
   $, buildBoard, paintMyBoard, paintEnemyBoard, renderDock,
   logLine, toast, setScreen, esc, cellName,
@@ -47,6 +48,7 @@ const nameOf = side => S.names[side] || (side === 'host' ? '房主' : '挑戰者
 
 let net = null;
 let boards = { setup: null, enemy: null, mine: null };
+let boss = null;
 
 // ── 網路事件 ─────────────────────────────────────────
 function onStatus(ev) {
@@ -707,6 +709,8 @@ function bindChat() {
 // ── 渲染 ─────────────────────────────────────────────
 function render() {
   $('peerCount').textContent = `👥 ${S.peerCount}`;
+  // 上班模式的暗號：輪到我 = 狀態列多一個 error。
+  boss?.setSignal(isMyTurn());
 
   if (S.phase === 'setup') {
     renderDock($('shipDock'), S.myFleet, S.selectedShip);
@@ -823,6 +827,20 @@ function init() {
     $('btnSound').setAttribute('aria-pressed', String(on));
     if (on) unlockAudio();
   });
+
+  // 進上班模式先靜音，出來照原本的設定還原。
+  let soundBeforeBoss = true;
+  boss = initBossMode({
+    onEnter() {
+      soundBeforeBoss = isSoundEnabled();
+      setSoundEnabled(false);
+    },
+    onExit() {
+      setSoundEnabled(soundBeforeBoss);
+      if (soundBeforeBoss) unlockAudio();
+    },
+  });
+  $('btnBoss').addEventListener('click', () => boss.enter());
 
   $('btnLeave').addEventListener('click', () => {
     if (S.phase === 'lobby' || confirm('確定離開房間？')) leaveRoom();
