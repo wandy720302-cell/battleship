@@ -1044,6 +1044,9 @@ input::placeholder { color: var(--text-mute); }
 .xl-hit { color: #c00000; }
 .xl-sunk { background: #ffc7ce !important; color: #9c0006; font-weight: 700; }
 .xl-ship { background: #ddebf7 !important; }
+/* 擺船預覽：像 Excel 選取範圍的虛線框 */
+.xl-preview     { background: #e8f1fb !important; outline: 2px dashed #5b9bd5; outline-offset: -2px; }
+.xl-preview-bad { background: #fde0e0 !important; outline: 2px dashed #c00000; outline-offset: -2px; }
 .xl-sel {
   outline: 2px solid #107c41;
   outline-offset: -1px;

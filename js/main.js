@@ -862,12 +862,31 @@ function init() {
       over: S.over,
       gameId: S.gameId,
       readyMe: !!S.ready[S.role],
+      selectedShip: S.myFleet.find(s => s.id === S.selectedShip) || null,
       placed: isFleetPlaced(S.myFleet),
       placedCount: S.myFleet.filter(s => s.x != null).length,
       remaining: remainingShips(S.myFleet),
     }),
     onFire: fire,
     onReady: markReady,
+    // Excel 裡手動擺船：沿用一般模式的 placeSelected / liftShip，只是方向由 Excel 那邊帶進來。
+    onPlace(x, y, dir) {
+      if (!S.selectedShip) {
+        const next = S.myFleet.find(s => s.x == null);
+        if (!next) return;
+        S.selectedShip = next.id;
+      }
+      S.dir = dir;
+      if (placeSelected(x, y)) sfx('turn');
+      render();
+    },
+    onLift(x, y) {
+      const occ = occupancy(S.myFleet).get(key(x, y));
+      if (!occ) return;
+      liftShip(occ.ship.id);
+      S.dir = occ.ship.dir;
+      render();
+    },
     onRandom() {
       S.myFleet = randomFleet();
       S.selectedShip = null;

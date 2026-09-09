@@ -1,6 +1,6 @@
 // 可玩的上班模式：假 Excel。棋盤就是試算表上的兩塊範圍，
 // 命中 = 紅字負數、落空 = 會計格式的「-」、擊沉 = 淺紅填滿深紅字（Excel 內建條件格式）。
-import { SIZE, key, occupancy } from './game.js';
+import { SIZE, key, occupancy, canPlace, cellsOf } from './game.js';
 
 const COLS = 24;   // A–X；1366 寬的筆電也要一次看到兩塊棋盤
 const ROWS = 32;
@@ -39,7 +39,7 @@ const neg = n => `(${fmt(n)})`;
 
 export function initExcelMode(hooks) {
   const {
-    getState, onFire, onReady, onRandom, onRematch, onEnter, onExit,
+    getState, onFire, onReady, onRandom, onRematch, onPlace, onLift, onEnter, onExit,
   } = hooks;
 
   const root = document.createElement('div');
@@ -154,8 +154,14 @@ export function initExcelMode(hooks) {
 
   // ── 狀態 ────────────────────────────────────────────
   let armed = false;
-  let sel = { x: 0, y: 0 };  // 在敵方區塊裡的選取格（遊戲座標）
+  let sel = { x: 0, y: 0 };  // 選取格（遊戲座標）：擺船時在右表 Actual，開戰後在左表 Forecast
+  let dir = 'h';             // 擺船方向，Space 切換
   let dialogShownFor = null;
+  // 擺船階段游標在自己的表上，開戰後才移到敵方。
+  const curBlock = () => {
+    const s = getState();
+    return (s.phase === 'setup' && s.role !== 'spectator') ? 'right' : 'left';
+  };
   const savedTitle = document.title;
   const favicon = document.querySelector('link[rel="icon"]');
   const savedIcon = favicon?.href;
@@ -211,11 +217,25 @@ export function initExcelMode(hooks) {
     }
   }
 
+  // 擺船預覽：目前這艘船若放在游標處會佔哪幾格，放不下就紅。
+  function paintPreview(s) {
+    root.querySelectorAll('.xl-preview, .xl-preview-bad')
+      .forEach(el => el.classList.remove('xl-preview', 'xl-preview-bad'));
+    const ship = s.selectedShip;
+    if (!ship) return;
+    const ok = canPlace(s.myFleet, ship, sel.x, sel.y, dir);
+    for (const c of cellsOf({ ...ship, x: sel.x, y: sel.y, dir })) {
+      if (c.x >= SIZE || c.y >= SIZE) continue;
+      const { r, c: col } = toSheet('right', c.x, c.y);
+      cellAt(r, col)?.classList.add(ok ? 'xl-preview' : 'xl-preview-bad');
+    }
+  }
+
   function paintSelection() {
     root.querySelectorAll('.xl-sel').forEach(el => el.classList.remove('xl-sel'));
     colHeads.forEach(h => h.classList.remove('xl-head-on'));
     rowHeads.forEach(h => h.classList.remove('xl-head-on'));
-    const { r, c } = toSheet('left', sel.x, sel.y);
+    const { r, c } = toSheet(curBlock(), sel.x, sel.y);
     cellAt(r, c)?.classList.add('xl-sel');
     colHeads[c].classList.add('xl-head-on');
     rowHeads[r].classList.add('xl-head-on');
@@ -234,6 +254,7 @@ export function initExcelMode(hooks) {
     } else {
       paintTracker('left', s.enemy, s.enemyReveal);
       paintMine('right', s.myFleet, s.incoming);
+      if (s.phase === 'setup' && !s.readyMe) paintPreview(s);
     }
     paintSelection();
 
@@ -269,10 +290,32 @@ export function initExcelMode(hooks) {
     const td = e.target.closest('td');
     if (!td) return;
     const pos = fromSheet(+td.dataset.r, +td.dataset.c);
-    if (!pos || pos.side !== 'left') return;
-    if (sel.x === pos.x && sel.y === pos.y) tryFire();
-    else { sel = { x: pos.x, y: pos.y }; paintSelection(); }
+    if (!pos || pos.side !== curBlock()) return;
+    if (sel.x === pos.x && sel.y === pos.y) act();
+    else { sel = { x: pos.x, y: pos.y }; update(); }
   });
+
+  // Enter / 第二次點擊：擺船階段是放下或撿起，開戰後是開火。
+  function act() {
+    const s = getState();
+    if (s.phase === 'setup') {
+      if (s.readyMe) return;
+      // 手上有船：只嘗試放下（放不下就沒事）。手上沒船：在船上是撿起、全放好了是準備。
+      if (s.selectedShip) onPlace(sel.x, sel.y, dir);
+      else if (occupancy(s.myFleet).has(key(sel.x, sel.y))) lift(s);
+      else if (s.placed) onReady();
+    } else if (s.phase === 'battle') {
+      tryFire();
+    }
+  }
+
+  // 撿起游標下的船，方向跟著那艘船走，重放時才不會莫名轉向。
+  function lift(s) {
+    const hit = occupancy(s.myFleet).get(key(sel.x, sel.y));
+    if (!hit) return;
+    dir = hit.ship.dir;
+    onLift(sel.x, sel.y);
+  }
 
   function tryFire() {
     const s = getState();
@@ -289,22 +332,30 @@ export function initExcelMode(hooks) {
         x: Math.min(SIZE - 1, Math.max(0, sel.x + dx)),
         y: Math.min(SIZE - 1, Math.max(0, sel.y + dy)),
       };
-      paintSelection();
+      update();
     };
+    const inSetup = s.phase === 'setup' && !s.readyMe && s.role !== 'spectator';
     switch (e.key) {
       case 'ArrowUp':    e.preventDefault(); move(0, -1); break;
       case 'ArrowDown':  e.preventDefault(); move(0, 1); break;
       case 'ArrowLeft':  e.preventDefault(); move(-1, 0); break;
       case 'ArrowRight': e.preventDefault(); move(1, 0); break;
       case 'Tab':        e.preventDefault(); move(e.shiftKey ? -1 : 1, 0); break;
-      case 'Enter':
+      case 'Enter':      e.preventDefault(); act(); break;
+      case ' ': case 'r': case 'R':
+        if (!inSetup) break;
         e.preventDefault();
-        if (s.phase === 'setup') { if (s.placed && !s.readyMe) onReady(); }
-        else if (s.phase === 'battle') tryFire();
+        dir = dir === 'h' ? 'v' : 'h';
+        update();
+        break;
+      case 'Delete': case 'Backspace':
+        if (!inSetup) break;
+        e.preventDefault();
+        lift(s);
         break;
       case 'F9':
         e.preventDefault();
-        if (s.phase === 'setup' && !s.readyMe) onRandom();
+        if (inSetup) onRandom();
         break;
     }
   }
