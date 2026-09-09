@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>戰艦對決 · Battleship</title>
+<meta name="description" content="雙人連線戰艦遊戲，開房後把連結丟給朋友就能開打。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚢</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar" id="topbar" hidden>
+  <div class="brand"><span class="brand-mark">🚢</span><span>戰艦對決</span></div>
+  <div class="room-info">
+    <button class="chip" id="btnShare" title="複製邀請連結">
+      <span class="chip-label">房間</span>
+      <span class="chip-code" id="roomCode">------</span>
+      <span class="chip-icon">🔗</span>
+    </button>
+    <span class="chip chip-quiet" id="peerCount" title="在場人數">👥 1</span>
+  </div>
+  <div class="topbar-actions">
+    <button class="icon-btn" id="btnSound" title="音效開關" aria-pressed="true">🔊</button>
+    <button class="icon-btn" id="btnLeave" title="離開房間">🚪</button>
+  </div>
+</header>
+
+<!-- ── 大廳 ─────────────────────────────────────────── -->
+<main class="screen lobby" id="screenLobby">
+  <div class="lobby-card">
+    <div class="lobby-hero">
+      <div class="hero-mark">🚢</div>
+      <h1>戰艦對決</h1>
+      <p class="hero-sub">開一間房，把連結丟給朋友，隔著網路互相轟。</p>
+    </div>
+
+    <label class="field">
+      <span class="field-label">你的代號</span>
+      <input id="inpName" type="text" maxlength="12" placeholder="海軍上將" autocomplete="nickname">
+    </label>
+
+    <div class="lobby-actions">
+      <button class="btn btn-primary btn-lg" id="btnHost">
+        <span class="btn-icon">⚓</span>開新房間
+      </button>
+      <div class="or-line"><span>或</span></div>
+      <div class="join-row">
+        <input id="inpCode" type="text" maxlength="6" placeholder="房間碼" autocapitalize="characters" spellcheck="false">
+        <button class="btn btn-ghost" id="btnJoin">加入</button>
+      </div>
+      <label class="check">
+        <input type="checkbox" id="chkSpectate">
+        <span>以觀戰身分進入（只看不打）</span>
+      </label>
+    </div>
+
+    <p class="lobby-error" id="lobbyError" hidden></p>
+    <p class="lobby-note">連線是瀏覽器對瀏覽器直連，沒有伺服器保存任何棋局。</p>
+  </div>
+</main>
+
+<!-- ── 擺船 ─────────────────────────────────────────── -->
+<main class="screen setup" id="screenSetup" hidden>
+  <div class="stage">
+    <section class="panel board-panel">
+      <header class="panel-head">
+        <h2>部署艦隊</h2>
+        <p class="panel-sub" id="setupHint">選一艘船，再點棋盤放下。按 <kbd>R</kbd> 或右鍵旋轉。</p>
+      </header>
+      <div class="board-wrap">
+        <div class="board" id="setupBoard" data-board="setup"></div>
+      </div>
+    </section>
+
+    <section class="panel dock-panel">
+      <header class="panel-head"><h2>船塢</h2></header>
+      <ul class="dock" id="shipDock"></ul>
+
+      <div class="setup-controls">
+        <button class="btn btn-ghost" id="btnRandom">🎲 隨機部署</button>
+        <button class="btn btn-ghost" id="btnClear">↺ 全部收回</button>
+        <button class="btn btn-ghost" id="btnRotate">⟳ 旋轉</button>
+      </div>
+
+      <div class="rules-box" id="rulesBox">
+        <h3>對戰規則</h3>
+        <label class="check">
+          <input type="checkbox" id="chkHitAgain">
+          <span>命中後可以再開一槍</span>
+        </label>
+        <p class="rules-note" id="rulesNote">由房主決定規則。</p>
+      </div>
+
+      <button class="btn btn-primary btn-lg btn-block" id="btnReady" disabled>準備完成</button>
+      <p class="wait-note" id="setupStatus">等待對手進房…</p>
+    </section>
+  </div>
+</main>
+
+<!-- ── 對戰 ─────────────────────────────────────────── -->
+<main class="screen battle" id="screenBattle" hidden>
+  <div class="turn-banner" id="turnBanner"><span id="turnText">準備開戰</span></div>
+
+  <div class="stage stage-battle">
+    <section class="panel board-panel">
+      <header class="panel-head">
+        <h2 id="enemyTitle">敵方海域</h2>
+        <p class="panel-sub" id="enemyFleetStatus"></p>
+      </header>
+      <div class="board-wrap">
+        <div class="board board-enemy" id="enemyBoard" data-board="enemy"></div>
+        <div class="board-lock" id="enemyLock" hidden><span>等待對方出手…</span></div>
+      </div>
+    </section>
+
+    <section class="panel board-panel">
+      <header class="panel-head">
+        <h2 id="myTitle">我方海域</h2>
+        <p class="panel-sub" id="myFleetStatus"></p>
+      </header>
+      <div class="board-wrap">
+        <div class="board board-mine" id="myBoard" data-board="mine"></div>
+      </div>
+    </section>
+
+    <aside class="panel side-panel">
+      <div class="log-head">
+        <button class="tab active" id="tabLog" data-tab="log">戰報</button>
+        <button class="tab" id="tabChat" data-tab="chat">聊天</button>
+      </div>
+      <ul class="log" id="battleLog"></ul>
+      <div class="chat-pane" id="chatPane" hidden>
+        <ul class="log chat-log" id="chatLog"></ul>
+        <form class="chat-form" id="chatForm">
+          <input id="chatInput" type="text" maxlength="200" placeholder="說點什麼…" autocomplete="off">
+          <button class="btn btn-ghost btn-sm" type="submit">送出</button>
+        </form>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<!-- ── 結算 ─────────────────────────────────────────── -->
+<div class="overlay" id="overlay" hidden>
+  <div class="overlay-card">
+    <div class="overlay-mark" id="overMark">🏆</div>
+    <h2 id="overTitle">勝利</h2>
+    <p id="overSub"></p>
+    <div class="overlay-actions">
+      <button class="btn btn-primary" id="btnRematch">再來一局</button>
+      <button class="btn btn-ghost" id="btnBackLobby">離開房間</button>
+    </div>
+    <p class="overlay-note" id="rematchNote" hidden></p>
+  </div>
+</div>
+
+<div class="toast-stack" id="toastStack"></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

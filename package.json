@@ -1,0 +1,11 @@
+{
+  "name": "battleship-p2p",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "雙人連線戰艦遊戲，WebRTC P2P，純靜態可直接放 GitHub Pages",
+  "scripts": {
+    "start": "npx --yes serve -l 8080 .",
+    "check": "node --check js/game.js && node --check js/net.js && node --check js/audio.js && node --check js/ui.js && node --check js/main.js && echo syntax-ok"
+  }
+}
