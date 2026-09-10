@@ -5,7 +5,7 @@ import {
   cellsOf, SHIP_TYPES, fleetSpec, deployCount, nonGhostAllSunk, ghostOf,
 } from './game.js';
 import {
-  AUG, AUGMENTS, TIER_NAME, PICK_EVERY, rollOffers, crossCells, squareCells, rowCells,
+  AUG, AUGMENTS, TIER_NAME, PICK_EVERY, rollOffers, crossCells, squareCells, bandCells,
   hollowPurpleEligible,
   advanceTurn as hexAdvanceTurn,
   nearShip, sonarPresent, randomDecoy, randomShipCell, isUndamaged,
@@ -830,8 +830,8 @@ function fire(x, y) {
     return fireCells(cells, 'cross');
   }
   if (S.mode === 'hollowpurple') {
-    const cells = rowCells(x, y).filter(c => canTarget(S.enemy, key(c.x, c.y)));
-    if (!cells.length) return toast('這條線全都打過了，換一列', 'bad');
+    const cells = bandCells(x, y).filter(c => canTarget(S.enemy, key(c.x, c.y)));
+    if (!cells.length) return toast('這 4 列全都打過了，換一列', 'bad');
     S.aug[S.role].used.hollowpurple = true;
     S.mode = null;
     cutscene?.play();           // 攻方自己也要看到——這是本局最戲劇性的一擊
@@ -1500,7 +1500,7 @@ function renderModeBar() {
   const text = {
     'sonar': '🔊 聲納：點敵方海域一格，掃描它周圍 3×3（消耗回合）',
     'cross': '💣 十字爆破：點敵方海域一格，同時打上下左右 5 格',
-    'hollowpurple': '⚡ 虛式「茈」：點敵方海域一格，整條橫線 5 格全部開火',
+    'hollowpurple': '⚡ 虛式「茈」：點敵方海域一格，以這列為中心的 4 列（40 格）全部開火',
     'blink': '🌀 緊急躍遷：點我方海域一艘「完全未受損」的船',
     'blink-place': '🌀 躍遷：點目標位置放下，R 旋轉（不能放在被打過的格子）',
   }[S.mode];

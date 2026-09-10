@@ -31,7 +31,7 @@ export const AUGMENTS = [
     desc: '消耗一回合，所有完全未受損的船隨機換位，對手之前的情報全部作廢。每局一次。' },
   { id: 'hollowpurple', name: '虛式「茈」', tier: 'prism', cat: '稜鏡', kind: 'active', once: true,
     condition: 'lowHp',
-    desc: '只有在你只剩最後 2 艘船時才可能刷到。消耗一回合，選一格，整條橫線 5 格全部開火。發動時雙方畫面都會播放專屬動畫。每局一次。' },
+    desc: '只有在你只剩最後 2 艘船時才可能刷到。消耗一回合，選一格，以該列為中心的 4 列、整整 40 格全部開火。發動時雙方畫面都會播放專屬動畫。每局一次。' },
 ];
 
 // 虛式「茈」的出場條件：只剩最後 2 艘船才有機率被抽到（機率仍照階級權重，不保證抽到）。
@@ -96,11 +96,16 @@ export function advanceTurn(shooter, agg, st) {
   return next;
 }
 
-// 虛式「茈」：整條橫線固定 5 格（棋盤寬 10，永遠取得到）。
-// 以點擊格為中心取 5 格，貼著邊界時往內縮，不會裁短。
-export const rowCells = (x, y) => {
-  const start = Math.min(Math.max(x - 2, 0), SIZE - 5);
-  return Array.from({ length: 5 }, (_, i) => ({ x: start + i, y }));
+// 虛式「茈」：4 列 × 10 欄＝40 格，橫掃整個棋盤寬度。
+// 以點擊格的「列」為中心取 4 列（欄一律全開，10 格永遠取滿），
+// 貼著上下邊界時往內縮，不會裁短。
+export const bandCells = (_x, y) => {
+  const start = Math.min(Math.max(y - 1, 0), SIZE - 4);
+  const cells = [];
+  for (let yy = start; yy < start + 4; yy++) {
+    for (let x = 0; x < SIZE; x++) cells.push({ x, y: yy });
+  }
+  return cells;
 };
 
 export const crossCells = (x, y) =>
