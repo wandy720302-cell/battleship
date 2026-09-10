@@ -3,6 +3,7 @@ import {
   key, inBounds, canPlace, emptyFleet, randomFleet, isFleetPlaced, occupancy,
   receiveFire, fleetDestroyed, remainingShips, newTracker, recordShot,
   cellsOf, SHIP_TYPES, fleetSpec, deployCount, nonGhostAllSunk, ghostOf,
+  SIZE, CLASSIC_SIZE, MAYHEM_SIZE, setBoardSize,
 } from './game.js';
 import {
   AUG, AUGMENTS, TIER_NAME, PICK_EVERY, rollOffers, crossCells, squareCells, bandCells,
@@ -432,14 +433,36 @@ function enterSetup() {
 }
 
 // 切換海克斯模式會換整套編制（經典 5 艘 17 格 / 海克斯 9 艘 25 格 + 幽靈船）
+// Excel 偽裝的整套視覺隱喻（12 個月裡的 10 個、10 個業務區）是綁死在 10×10 上的，
+// 海克斯大亂鬥的 15×15 棋盤放不進去——與其硬做一個湊不齊欄位、看起來很假的試算表，
+// 不如老實停用，讓 VSCode 那顆頂著（見上面 Esc 優先鏈）。
+function updateExcelAvailability() {
+  const btn = $('btnExcel');
+  const blocked = SIZE !== CLASSIC_SIZE;
+  btn.disabled = blocked;
+  btn.title = blocked
+    ? '上班模式：Excel 目前只支援經典模式棋盤（海克斯是 15×15，套不進 10×10 的偽裝）'
+    : '上班模式：Excel，可以直接在裡面打（Esc）';
+  if (blocked && excel?.active) excel.exit();
+}
+
 function rebuildFleet() {
   if (S.phase !== 'setup' || !isPlayer()) return;
+  // 海克斯大亂鬥是 15×15，經典是 10×10——換模式時棋盤要跟著重建
+  // （SIZE 是活繫結，setBoardSize 一改，game.js/hex.js 裡所有引用都會跟著變；
+  // 但 DOM 網格是先前依當時的 SIZE 建好的，得整個重畫）。
+  setBoardSize(S.mayhem ? MAYHEM_SIZE : CLASSIC_SIZE);
+  boards.setup = buildBoard($('setupBoard'));
+  boards.enemy = buildBoard($('enemyBoard'));
+  boards.mine = buildBoard($('myBoard'));
   S.myFleet = emptyFleet(spec());
   S.selectedShip = S.myFleet[0].id;
   S.dir = 'h';
   S.ready[S.role] = false;
+  S.hoverCell = null;
   $('btnReady').disabled = true;
   $('btnReady').textContent = '準備完成';
+  updateExcelAvailability();
 }
 
 function selectShip(id) {
@@ -849,7 +872,7 @@ function fire(x, y) {
   let kind = 'shot';
   if (has(S.role, 'gambler') && S.missStreak >= 4) {
     const pool = [];
-    for (let yy = 0; yy < 10; yy++) for (let xx = 0; xx < 10; xx++) {
+    for (let yy = 0; yy < SIZE; yy++) for (let xx = 0; xx < SIZE; xx++) {
       const kk = key(xx, yy);
       if (kk !== k && canTarget(S.enemy, kk)) pool.push({ x: xx, y: yy });
     }
@@ -1474,7 +1497,7 @@ function paintBattleMine() {
   if (S.ghostPhase === 'placing') {
     const ghost = ghostOf(S.myFleet);
     if (ghost) {
-      for (let y = 0; y < 10; y++) for (let x = 0; x < 10; x++) {
+      for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
         if (canPlace(S.myFleet, ghost, x, y, S.dir)) {
           boards.mine.get(key(x, y))?.classList.add('ghost-ok');
         }
@@ -1796,7 +1819,9 @@ function init() {
       else if (S.mode && !excel.active && !boss.active) { cancelMode(); render(); }
       else if (boss.active) boss.exit();
       else if (excel.active) excel.exit();
-      else excel.enter();
+      // 海克斯的 15×15 套不進 Excel 的 10×10 偽裝，退而求其次跳 VSCode（純遮羞布但至少能一鍵躲）
+      else if (SIZE === CLASSIC_SIZE) excel.enter();
+      else boss.enter();
       return;
     }
     if (e.key === '?' && e.target.tagName !== 'INPUT' && !boss.active && !excel.active) {

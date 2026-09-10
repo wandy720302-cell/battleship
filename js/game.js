@@ -1,5 +1,11 @@
 // 純遊戲邏輯：不碰 DOM、不碰網路，方便單獨推理與測試。
-export const SIZE = 10;
+// SIZE 用 let 而不是 const：海克斯大亂鬥棋盤是 15×15，經典模式是 10×10。
+// ES module 的 export let 是「活繫結」——其他檔案 import 進去的 SIZE 會自動跟著這裡變，
+// 不用把 size 當參數傳滿整條呼叫鏈；只是切換時機要對（擺船開始前），詳見 setBoardSize()。
+export let SIZE = 10;
+export const CLASSIC_SIZE = 10;
+export const MAYHEM_SIZE = 15;
+export function setBoardSize(n) { SIZE = n; }
 
 // 經典模式：5 艘、17 格
 export const SHIP_TYPES = [

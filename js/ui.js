@@ -1,7 +1,7 @@
 // DOM 渲染層：只負責把狀態畫出來，不做任何規則判斷、不碰網路。
 import { SIZE, key, cellsOf, occupancy } from './game.js';
 
-const COLS = 'ABCDEFGHIJ';
+const COLS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';   // 撐到 26 欄，海克斯 15×15 用得到前 15 個
 export const cellName = (x, y) => COLS[x] + (y + 1);
 
 export const $ = id => document.getElementById(id);
@@ -9,6 +9,9 @@ export const $ = id => document.getElementById(id);
 // 建出 11x11（含座標軸）並回傳 "x,y" -> button 的對照表。
 export function buildBoard(el) {
   el.innerHTML = '';
+  // 只設欄數這個 CSS 變數，軸標籤寬度（22px / 手機版 18px）留給 CSS 的
+  // media query 決定——SIZE 隨模式切換，每次重建棋盤都要重新設一次。
+  el.style.setProperty('--board-cols', SIZE);
   const cells = new Map();
   const frag = document.createDocumentFragment();
 

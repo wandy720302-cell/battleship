@@ -123,6 +123,8 @@ kbd {
 }
 .icon-btn:hover { background: var(--panel-2); color: var(--text); border-color: var(--line); }
 .icon-btn[aria-pressed="false"] { opacity: .45; }
+.icon-btn:disabled { opacity: .3; cursor: not-allowed; }
+.icon-btn:disabled:hover { background: none; border-color: transparent; color: var(--text-dim); }
 
 /* 通用按鈕與表單 */
 .btn {
@@ -354,7 +356,9 @@ input::placeholder { color: var(--text-mute); }
 
 .board {
   display: grid;
-  grid-template-columns: 22px repeat(10, 1fr);
+  /* --board-cols 由 JS 依 SIZE 設定（10 或 15）；軸標籤寬度維持 CSS 控制，
+     這樣手機版 media query 的窄軸寬不會被 JS 整個蓋掉。 */
+  grid-template-columns: 22px repeat(var(--board-cols, 10), 1fr);
   gap: var(--cell-gap);
   touch-action: none;
   user-select: none;
@@ -1153,7 +1157,7 @@ input::placeholder { color: var(--text-mute); }
   body { font-size: 14px; }
   :root { --cell-gap: 2px; }
   .setup .stage, .stage-battle { grid-template-columns: minmax(0, 1fr); }
-  .board { grid-template-columns: 18px repeat(10, 1fr); }
+  .board { grid-template-columns: 18px repeat(var(--board-cols, 10), 1fr); }
   .topbar { gap: 10px; padding: 10px 14px; }
   .brand span:not(.brand-mark) { display: none; }
   .stage { padding: 12px; }
