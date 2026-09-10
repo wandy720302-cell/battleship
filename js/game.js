@@ -1,6 +1,7 @@
 // 純遊戲邏輯：不碰 DOM、不碰網路，方便單獨推理與測試。
 export const SIZE = 10;
 
+// 經典模式：5 艘、17 格
 export const SHIP_TYPES = [
   { id: 'carrier',    name: '航空母艦', size: 5 },
   { id: 'battleship', name: '戰艦',     size: 4 },
@@ -8,6 +9,30 @@ export const SHIP_TYPES = [
   { id: 'submarine',  name: '潛水艇',   size: 3 },
   { id: 'destroyer',  name: '驅逐艦',   size: 2 },
 ];
+
+// 幽靈船幾格。改這個數字就好：
+//   1 → 難找（中位 38 發、約 5 分鐘），純運氣，命中即沉
+//   5 → 好找（中位 18 發、約 2.4 分鐘），打中一發能沿著追
+export const GHOST_SIZE = 1;
+
+// 海克斯模式：10 艘。9 艘先擺（1,1,2,2,3,3,4,4,5＝25 格），
+// 最後那艘「幽靈船」開局不佈署，等前 9 艘全沉了才登場。
+export const MAYHEM_SHIPS = [
+  { id: 'carrier',    name: '航空母艦', size: 5 },
+  { id: 'battleship', name: '戰艦',     size: 4 },
+  { id: 'heavy',      name: '重巡洋艦', size: 4 },
+  { id: 'cruiser',    name: '巡洋艦',   size: 3 },
+  { id: 'submarine',  name: '潛水艇',   size: 3 },
+  { id: 'destroyer',  name: '驅逐艦',   size: 2 },
+  { id: 'frigate',    name: '護衛艦',   size: 2 },
+  { id: 'torpedo',    name: '魚雷艇',   size: 1 },
+  { id: 'scout',      name: '偵察艇',   size: 1 },
+  { id: 'ghost',      name: '幽靈船',   size: GHOST_SIZE, ghost: true },
+];
+
+export const fleetSpec = mayhem => (mayhem ? MAYHEM_SHIPS : SHIP_TYPES);
+// 幽靈船不在開局佈署，所以「要擺幾艘」跟「總共幾艘」是兩個數字
+export const deployCount = spec => spec.filter(s => !s.ghost).length;
 
 export const key = (x, y) => `${x},${y}`;
 export const inBounds = (x, y) => x >= 0 && y >= 0 && x < SIZE && y < SIZE;
@@ -36,13 +61,14 @@ export function canPlace(fleet, ship, x, y, dir) {
   return !cells.some(c => taken.has(key(c.x, c.y)));
 }
 
-export function emptyFleet() {
-  return SHIP_TYPES.map(t => ({ ...t, x: null, y: null, dir: 'h', hits: [] }));
+export function emptyFleet(spec = SHIP_TYPES) {
+  return spec.map(t => ({ ...t, x: null, y: null, dir: 'h', hits: [] }));
 }
 
-export function randomFleet() {
-  const fleet = emptyFleet();
+export function randomFleet(spec = SHIP_TYPES) {
+  const fleet = emptyFleet(spec);
   for (const ship of fleet) {
+    if (ship.ghost) continue;          // 幽靈船留到後面才登場
     let placed = false;
     while (!placed) {
       const dir = Math.random() < 0.5 ? 'h' : 'v';
@@ -57,7 +83,15 @@ export function randomFleet() {
   return fleet;
 }
 
-export const isFleetPlaced = fleet => fleet.every(s => s.x != null);
+// 開局只需要把非幽靈船擺好
+export const isFleetPlaced = fleet => fleet.every(s => s.ghost || s.x != null);
+
+// 除了幽靈船以外全部沉了 → 該讓幽靈船登場
+export const nonGhostAllSunk = fleet =>
+  fleet.some(s => s.ghost) &&
+  fleet.filter(s => !s.ghost).every(s => s.x != null && s.hits.length === s.size);
+
+export const ghostOf = fleet => fleet.find(s => s.ghost) || null;
 
 // 佔用格子 -> 船，用來做命中查詢與繪製。
 export function occupancy(fleet) {

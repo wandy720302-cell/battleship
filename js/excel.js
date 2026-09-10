@@ -221,6 +221,7 @@ export function initExcelMode(hooks) {
     const s = getState();
     if (s.role === 'spectator') return 'left';
     if (s.phase === 'setup') return 'right';
+    if (s.ghostPhase === 'placing') return 'right';
     return s.mode?.startsWith('blink') ? 'right' : 'left';
   };
   const savedTitle = document.title;
@@ -329,7 +330,7 @@ export function initExcelMode(hooks) {
       paintTracker('left', s.enemy, s.enemyReveal);
       paintMine('right', s.myFleet, s.incoming, s.decoy);
       if (s.phase === 'setup' && !s.readyMe) paintPreview(s);
-      if (s.mode === 'blink-place') paintPreview(s);
+      if (s.mode === 'blink-place' || s.ghostPhase === 'placing') paintPreview(s);
       if (s.mode === 'cross') paintCross();
     }
     paintSelection();
@@ -340,10 +341,12 @@ export function initExcelMode(hooks) {
     const right = root.querySelector('#xlStatusRight');
     if (s.phase === 'setup') {
       status.textContent = s.readyMe ? 'Calculating…' : 'Ready';
-      right.textContent = s.placed ? 'Count: 5' : `Count: ${s.placedCount}`;
+      right.textContent = `Count: ${s.placedCount}${s.deployTotal ? ` of ${s.deployTotal}` : ''}`;
     } else if (s.phase === 'battle') {
       // 選強化 / 選目標時，狀態列借用 Excel 真的會出現的字樣。
       status.textContent = s.pending ? 'Enter data validation input'
+        : s.ghostPhase === 'placing' ? 'Select range for hidden sheet'
+        : s.ghostPhase === 'waiting' ? 'Waiting for external link…'
         : s.mode ? 'Select destination range'
         : s.myTurn ? 'Ready' : 'Calculating…';
       const sunk = t => t.sunkShips.filter(x => !x.decoy).length;
@@ -428,8 +431,8 @@ export function initExcelMode(hooks) {
       else if (occupancy(s.myFleet).has(key(sel.x, sel.y))) lift(s);
       else if (s.placed) onReady();
     } else if (s.phase === 'battle') {
-      // 躍遷的兩下都走 onPlace，main.js 那邊會分辨是撿起還是放下。
-      if (s.mode?.startsWith('blink')) onPlace(sel.x, sel.y, dir);
+      // 躍遷與幽靈船佈署都走 onPlace，main.js 那邊會分辨要做什麼。
+      if (s.ghostPhase === 'placing' || s.mode?.startsWith('blink')) onPlace(sel.x, sel.y, dir);
       else tryFire();
     }
   }
@@ -493,7 +496,7 @@ export function initExcelMode(hooks) {
       case 'Tab':        e.preventDefault(); move(e.shiftKey ? -1 : 1, 0); break;
       case 'Enter':      e.preventDefault(); act(); break;
       case ' ': case 'r': case 'R':
-        if (!inSetup && s.mode !== 'blink-place') break;
+        if (!inSetup && s.mode !== 'blink-place' && s.ghostPhase !== 'placing') break;
         e.preventDefault();
         dir = dir === 'h' ? 'v' : 'h';
         update();

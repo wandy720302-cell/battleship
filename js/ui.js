@@ -62,7 +62,7 @@ function paintShip(cells, ship, extraClass = '') {
 export function paintMyBoard(cells, fleet, incoming, lastShot, decoy = null) {
   resetCells(cells);
   for (const ship of fleet) {
-    if (ship.x != null) paintShip(cells, ship);
+    if (ship.x != null) paintShip(cells, ship, ship.ghost ? 'ghost-ship' : '');
   }
   if (decoy) {
     const c = decoy.cells;
@@ -109,6 +109,7 @@ export function paintEnemyBoard(cells, tracker, lastShot, revealFleet) {
 export function renderDock(el, fleet, selectedId) {
   el.innerHTML = '';
   for (const ship of fleet) {
+    if (ship.ghost) continue;          // 幽靈船不在開局船塢裡
     const li = document.createElement('li');
     li.className = 'dock-item';
     li.dataset.shipId = ship.id;
@@ -139,9 +140,31 @@ export function logLine(el, html, cls = '') {
   if (cls) li.className = cls;
   li.innerHTML = html;
   el.appendChild(li);
-  el.scrollTop = el.scrollHeight;
+  // 有人正在讀某則的說明時先別捲動——內容從游標底下溜走很惱人。
+  // 放開後由呼叫端補捲到底。
+  if (!el.dataset.hold) el.scrollTop = el.scrollHeight;
   // 戰報留 200 則就夠了，久戰不必無限長。
   while (el.children.length > 200) el.removeChild(el.firstChild);
+}
+
+// 中上方的動作提示：每次出手就跳一下，讓人不用一直盯戰報。
+// 跟 toast 不同——這裡只留最新一則，後來的直接取代前一則。
+let bannerTimer = null;
+export function banner(html, kind = '') {
+  const el = $('actionBanner');
+  if (!el) return;
+  el.className = `action-banner ${kind}`.trim();
+  el.innerHTML = html;
+  el.hidden = false;
+  // 重播一次進場動畫，連續事件才看得出「又跳了一下」
+  el.style.animation = 'none';
+  void el.offsetWidth;
+  el.style.animation = '';
+  clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(() => {
+    el.classList.add('out');
+    setTimeout(() => { el.hidden = true; el.classList.remove('out'); }, 320);
+  }, kind === 'ghost' ? 5200 : 2800);
 }
 
 export function toast(text, kind = '') {

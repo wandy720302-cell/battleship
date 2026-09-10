@@ -2,10 +2,11 @@
 import {
   key, inBounds, canPlace, emptyFleet, randomFleet, isFleetPlaced, occupancy,
   receiveFire, fleetDestroyed, remainingShips, newTracker, recordShot,
-  cellsOf, SHIP_TYPES,
+  cellsOf, SHIP_TYPES, fleetSpec, deployCount, nonGhostAllSunk, ghostOf,
 } from './game.js';
 import {
   AUG, AUGMENTS, TIER_NAME, PICK_EVERY, rollOffers, crossCells, squareCells,
+  advanceTurn as hexAdvanceTurn,
   nearShip, sonarPresent, randomDecoy, randomShipCell, isUndamaged,
   relocateUndamaged, decoyAsShip, resolveCell,
 } from './hex.js';
@@ -15,7 +16,7 @@ import { initBossMode } from './boss.js';
 import { initExcelMode } from './excel.js';
 import {
   $, buildBoard, paintMyBoard, paintEnemyBoard, renderDock,
-  logLine, toast, setScreen, esc, cellName,
+  logLine, toast, banner, setScreen, esc, cellName,
 } from './ui.js';
 
 // ── 狀態 ─────────────────────────────────────────────
@@ -55,7 +56,8 @@ const S = {
   // ── 大亂鬥（兩邊都看得到的公開狀態） ──
   aug: { host: freshAug(), guest: freshAug() },
   shotsFired: { host: 0, guest: 0 },   // 開火次數，決定何時選強化
-  turnShots: { host: 0, guest: 0 },    // 這一輪已開幾槍（背水一戰用）
+  turnShots: { host: 0, guest: 0 },    // 這一輪已開幾槍（背水一戰用，額外射擊不計）
+  bonus: { host: false, guest: false },// 下一發是不是「額外送的」（乘勝追擊／幽靈艦補償）
   extra: { host: 0, guest: 0 },        // 額外射擊次數（幽靈艦被擊沉時給防守方）
   pickedAt: new Set(),                 // 已經在哪些開火次數選過了
   pending: null,                       // 正在選的三個強化 id
@@ -65,7 +67,14 @@ const S = {
   // ── 大亂鬥（只有我自己知道的防守狀態） ──
   decoy: null,                         // { cells, hits }
   armorHits: new Map(),
+  // ── 幽靈船 ──
+  ghostPhase: null,                    // null | 'placing'(我在佈署) | 'waiting'(等對方佈署)
+  ghostOut: { host: false, guest: false },  // 誰的幽靈船已經登場
 };
+
+// 這一局用哪套艦隊編制（海克斯 10 艘 / 經典 5 艘）
+const spec = () => fleetSpec(S.mayhem);
+const totalShips = () => spec().length;
 
 const opposite = side => (side === 'host' ? 'guest' : 'host');
 const isPlayer = () => S.role === 'host' || S.role === 'guest';
@@ -83,6 +92,7 @@ let net = null;
 let boards = { setup: null, enemy: null, mine: null };
 let boss = null;   // 假 VSCode（純遮羞布）
 let excel = null;  // 假 Excel（可以在裡面打）
+let augTips = null;
 
 // ── 網路事件 ─────────────────────────────────────────
 function onStatus(ev) {
@@ -154,13 +164,17 @@ function onMessage(msg) {
       leaveRoom();
       return;
 
-    case 'rules':
+    case 'rules': {
+      const was = S.mayhem;
       S.variant = msg.variant;
       S.mayhem = !!msg.mayhem;
       S.names.host = msg.hostName || S.names.host;
       $('chkHitAgain').checked = S.variant === 'hit-again';
       $('chkMayhem').checked = S.mayhem;
+      // 編制不同（5 艘 vs 10 艘），切模式得整個重來
+      if (was !== S.mayhem && S.phase === 'setup') rebuildFleet();
       break;
+    }
 
     case 'ready':
       if (from === 'host' || from === 'guest') {
@@ -220,7 +234,7 @@ function onMessage(msg) {
       // 重複封包不能讓同一個強化列兩次。
       if ((from === 'host' || from === 'guest') && AUG[msg.id] && !S.aug[from].owned.includes(msg.id)) {
         S.aug[from].owned.push(msg.id);
-        logLine($('battleLog'), `<b>${esc(nameOf(from))}</b> 選了 ⚡ <b>${AUG[msg.id].name}</b>`, 'sys');
+        logLine($('battleLog'), `<b>${esc(nameOf(from))}</b> 選了 ⚡ ${augRef(msg.id)}`, 'sys');
         if (fromOpp && msg.id === 'intel') { /* 對方會另外送 intel-req */ }
       }
       break;
@@ -269,11 +283,26 @@ function onMessage(msg) {
     case 'blink':
     case 'rebuild':
       if (from === 'host' || from === 'guest') {
-        const what = msg.type === 'blink' ? '緊急躍遷，有一艘船換位了' : '艦隊重組，未受損的船全部換位';
-        logLine($('battleLog'), `<b>${esc(nameOf(from))}</b> 發動${what}`, 'sys');
+        const what = msg.type === 'blink' ? '，有一艘船換位了' : '，未受損的船全部換位';
+        logLine($('battleLog'), `<b>${esc(nameOf(from))}</b> 發動 ${augRef(msg.type)}${what}`, 'sys');
         if (from !== S.role) setTurn(opposite(from));
         sfx('turn');
       }
+      break;
+
+    case 'ghost-out':
+      if (from === 'host' || from === 'guest') {
+        S.ghostOut[from] = true;
+        S.turn = null;                 // 對方在挑位置，誰都不能出手
+        if (from !== S.role) S.ghostPhase = 'waiting';
+        banner(`👻 ${nameOf(from)} 的幽靈船已出沒`, 'ghost');
+        logLine($('battleLog'), `<b>👻 ${esc(nameOf(from))} 的幽靈船已出沒</b>——前 9 艘全沉，最後一艘正在選位置`, 'sunk');
+        sfx('sunk');
+      }
+      break;
+
+    case 'ghost-ready':
+      if (from === 'host' || from === 'guest') onGhostReady(from);
       break;
 
     case 'kamikaze-hit':
@@ -395,6 +424,17 @@ function enterSetup() {
   render();
 }
 
+// 切換海克斯模式會換整套編制（經典 5 艘 17 格 / 海克斯 9 艘 25 格 + 幽靈船）
+function rebuildFleet() {
+  if (S.phase !== 'setup' || !isPlayer()) return;
+  S.myFleet = emptyFleet(spec());
+  S.selectedShip = S.myFleet[0].id;
+  S.dir = 'h';
+  S.ready[S.role] = false;
+  $('btnReady').disabled = true;
+  $('btnReady').textContent = '準備完成';
+}
+
 function selectShip(id) {
   const ship = S.myFleet.find(s => s.id === id);
   if (!ship) return;
@@ -429,7 +469,7 @@ function placeSelected(x, y) {
   if (!canPlace([...S.myFleet, ...placementBlockers()], ship, x, y, S.dir)) return false;
   ship.x = x; ship.y = y; ship.dir = S.dir;
   if (S.phase === 'setup') {
-    const next = S.myFleet.find(s => s.x == null);
+    const next = S.myFleet.find(s => s.x == null && !s.ghost);
     S.selectedShip = next ? next.id : null;
     if (next) S.dir = 'h';
   }
@@ -500,7 +540,7 @@ function bindSetupInteractions() {
       const pos = cellAt(el, board);
       const k = pos ? key(pos.x, pos.y) : null;
       if (k !== S.hoverCell) { S.hoverCell = k; paintSetupBoard(); }
-    } else if (S.mode === 'blink-place') {
+    } else if (S.mode === 'blink-place' || S.ghostPhase === 'placing') {
       const pos = cellAt(el, $('myBoard'));
       const k = pos ? key(pos.x, pos.y) : null;
       if (k !== S.hoverCell) { S.hoverCell = k; paintBattleMine(); }
@@ -523,19 +563,19 @@ function bindSetupInteractions() {
   document.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT') return;
     if (e.key !== 'r' && e.key !== 'R') return;
-    if (S.phase === 'setup' || S.mode === 'blink-place') rotate();
+    if (S.phase === 'setup' || S.mode === 'blink-place' || S.ghostPhase === 'placing') rotate();
   });
 
   $('btnRotate').addEventListener('click', rotate);
   $('btnRandom').addEventListener('click', () => {
     unlockAudio();
-    S.myFleet = randomFleet();
+    S.myFleet = randomFleet(spec());
     S.selectedShip = null;
     sfx('turn');
     render();
   });
   $('btnClear').addEventListener('click', () => {
-    S.myFleet = emptyFleet();
+    S.myFleet = emptyFleet(spec());
     S.selectedShip = S.myFleet[0].id;
     S.dir = 'h';
     render();
@@ -548,6 +588,7 @@ function bindSetupInteractions() {
   $('chkMayhem').addEventListener('change', e => {
     if (S.role !== 'host') return;
     S.mayhem = e.target.checked;
+    rebuildFleet();
     net.send(rulesMsg());
     render();
   });
@@ -606,6 +647,7 @@ function resetMayhem() {
   S.aug = { host: freshAug(), guest: freshAug() };
   S.shotsFired = { host: 0, guest: 0 };
   S.turnShots = { host: 0, guest: 0 };
+  S.bonus = { host: false, guest: false };
   S.extra = { host: 0, guest: 0 };
   S.pickedAt = new Set();
   S.pending = null;
@@ -614,6 +656,8 @@ function resetMayhem() {
   S.missStreak = 0;
   S.decoy = null;
   S.armorHits = new Map();
+  S.ghostPhase = null;
+  S.ghostOut = { host: false, guest: false };
   S.seq = 0;
   S.lastSeq = 0;
   S.lastInSeq = 0;
@@ -636,28 +680,19 @@ const defense = () => ({
 function remainingOf(side) {
   if (side === S.role) return remainingShips(S.myFleet);
   const tracker = S.role === 'spectator' ? S.spec[side] : S.enemy;
-  return SHIP_TYPES.length - tracker.sunkShips.filter(s => !s.decoy).length;
+  return totalShips() - tracker.sunkShips.filter(s => !s.decoy).length;
 }
 
-// 換誰：三種身分用同一套算，狀態全是公開的。
+// 換誰：規則本體在 hex.js 的純函式裡（那邊有完整單元測試），這裡只餵狀態。
 function advanceTurn(shooter, agg) {
-  const defender = opposite(shooter);
-  let next;
-  if (agg.decoySunk) {
-    S.extra[defender] += 1;
-    next = defender;
-  } else if (agg.hit && (S.variant === 'hit-again' || has(shooter, 'press'))) {
-    next = shooter;
-  } else if (S.extra[shooter] > 0) {
-    S.extra[shooter] -= 1;
-    next = shooter;
-  } else if (has(shooter, 'laststand') && remainingOf(shooter) === 1 && S.turnShots[shooter] < 2) {
-    next = shooter;
-  } else {
-    next = defender;
-  }
-  if (next !== shooter) S.turnShots[shooter] = 0;
-  return next;
+  return hexAdvanceTurn(shooter, agg, {
+    variant: S.variant,
+    owned: { host: S.aug.host.owned, guest: S.aug.guest.owned },
+    remaining: { host: remainingOf('host'), guest: remainingOf('guest') },
+    extra: S.extra,
+    turnShots: S.turnShots,
+    bonus: S.bonus,
+  });
 }
 
 function setTurn(side) {
@@ -691,7 +726,7 @@ function choosePick(id) {
   S.pending = null;
   S.aug[me].owned.push(id);
   net.send({ type: 'pick', id });
-  logLine($('battleLog'), `你選了 ⚡ <b>${AUG[id].name}</b>`, 'sys');
+  logLine($('battleLog'), `你選了 ⚡ ${augRef(id)}`, 'sys');
   sfx('turn');
   if (id === 'intel') net.send({ type: 'intel-req' });
   if (id === 'ghost') {
@@ -840,7 +875,6 @@ function handleIncomingFire(msg) {
     return r;
   });
   const dead = fleetDestroyed(S.myFleet);
-  S.turnShots[shooter] += 1;
   net.send({ type: 'result', cells: results, kind: msg.kind || 'shot', seq: msg.seq, dead });
   const agg = { hit: results.some(r => r.hit), decoySunk: results.some(r => r.sunk?.decoy) };
   setTurn(dead ? null : advanceTurn(shooter, agg));
@@ -867,12 +901,110 @@ function handleIncomingFire(msg) {
     }
   }
   sfx(loudest);
+  announce(results, esc(nameOf(shooter)), false);
   if (dead) {
     net.send({ type: 'reveal', fleet: S.myFleet });
     endGame('lose');
-  } else if (S.turn === S.role) {
-    sfx('turn');
+  } else if (!maybeGhostOut()) {
+    if (S.turn === S.role) sfx('turn');
   }
+}
+
+// 任何會打到自己船的路徑（對手開火、同歸於盡自爆）都要檢查這個：
+// 前 9 艘全沉但幽靈船還沒佈署時，fleetDestroyed 是 false，
+// 若不觸發登場，海面上就一艘活船都沒有、對手永遠贏不了 → 死鎖。
+function maybeGhostOut() {
+  if (!S.mayhem || !isPlayer()) return false;
+  if (S.ghostOut[S.role] || !nonGhostAllSunk(S.myFleet)) return false;
+  enterGhostPlacing();
+  return true;
+}
+
+// 把一次齊射的結果濃縮成一句話，跳在畫面中上方。
+// 一發就是一發；十字爆破／地毯轟炸是多格，就報總結。
+function announce(results, shooterName, isMine) {
+  const sunk = results.filter(r => r.sunk);
+  const hits = results.filter(r => r.hit && !r.sunk).length;
+  const at = results.length === 1 ? cellName(results[0].x, results[0].y) : '';
+  const real = sunk.filter(r => !r.sunk.decoy);
+  const fake = sunk.length - real.length;
+  // 自己出手就不用再講「你」；對手出手才冠上名字
+  const by = isMine ? '' : `${shooterName} `;
+
+  if (real.length) {
+    const names = real.map(r => esc(r.sunk.name)).join('、');
+    return banner(isMine ? `💥 擊沉 <b>${names}</b>！` : `💥 你的 <b>${names}</b> 被擊沉`, 'sunk');
+  }
+  if (fake) return banner(isMine ? '👻 那是幽靈艦——白打了' : '👻 對手打中你的幽靈艦', 'sys');
+  if (results.some(r => r.armor)) return banner(`🛡 ${by}${at} — 裝甲彈開`, 'miss');
+  if (hits) {
+    const n = results.length > 1 ? `，命中 ${hits} 格` : '';
+    return banner(`🎯 ${by}命中 ${at}${n}`, 'hit');
+  }
+  const near = results.find(r => r.near !== undefined);
+  const hint = near ? `　📡 ${near.near ? '1 格內有船' : '2 格以上沒船'}` : '';
+  banner(`💧 ${by}${at} 落空${hint}`, 'miss');
+}
+
+// ── 幽靈船 ───────────────────────────────────────────
+function enterGhostPlacing() {
+  S.ghostOut[S.role] = true;
+  S.ghostPhase = 'placing';
+  S.turn = null;
+  const ghost = ghostOf(S.myFleet);
+  S.selectedShip = ghost?.id || null;
+  S.dir = 'h';
+  S.hoverCell = null;
+  S.mode = null;
+  net.send({ type: 'ghost-out' });
+  banner('👻 你的幽靈船已出沒 — 挑一個發光的位置', 'ghost');
+  sysLog('<b>👻 你的前 9 艘船全沉了。</b>幽靈船登場：挑個位置，對手的落彈紀錄會全部失效。');
+  sfx('sunk');
+  render();
+}
+
+function placeGhost(x, y) {
+  const ghost = ghostOf(S.myFleet);
+  if (!ghost) return;
+  S.selectedShip = ghost.id;
+  // 幽靈船可以停在被打過的水域（此時海圖幾乎打滿了），只是不能疊在自己的殘骸上
+  if (!canPlace(S.myFleet, ghost, x, y, S.dir)) {
+    return toast('這裡放不下（不能疊在自己的殘骸上）', 'bad');
+  }
+  ghost.x = x; ghost.y = y; ghost.dir = S.dir;
+  S.ghostPhase = null;
+  S.selectedShip = null;
+  S.hoverCell = null;
+  // 對手的落彈紀錄要作廢，我自己記的也得跟著清，兩邊才對稱。
+  // 少了這步，對手重打一格「他以為沒打過、我卻記得打過」的位置時，
+  // 我的重複封包過濾會把它丟掉、不回傳結果 → 對手永遠卡在「砲彈飛行中」。
+  for (const [k, v] of [...S.incoming]) if (v === 'miss' || v === 'armor') S.incoming.delete(k);
+  S.armorHits.clear();
+  S.lastEnemyShot = null;
+  net.send({ type: 'ghost-ready' });
+  banner('👻 幽靈船已就位 — 對手的海圖已重置', 'ghost');
+  sysLog('幽靈船就位。對手的落彈紀錄已清空，得重新找。');
+  sfx('turn');
+  setTurn(opposite(S.role));
+  render();
+}
+
+// 對手的幽靈船登場：我的落彈紀錄全部作廢（殘骸留著），重新找起
+function onGhostReady(from) {
+  const t = S.role === 'spectator' ? S.spec[from] : S.enemy;
+  for (const [k, v] of [...t.shots]) if (v === 'miss' || v === 'armor' || v === 'intel') t.shots.delete(k);
+  t.near.clear();
+  t.sonar.clear();
+  S.ghostPhase = null;
+  if (S.role !== 'spectator') {
+    S.lastMyShot = null;
+    banner(`👻 ${nameOf(from)} 的幽靈船已現身 — 你的落彈紀錄失效了`, 'ghost');
+    sysLog(`<b>${esc(nameOf(from))} 的幽靈船已現身。</b>你的落彈紀錄全部失效，只剩殘骸還在圖上。`);
+  }
+  // 佈署不算對方的回合，所以攻方接著打
+  setTurn(opposite(from));
+  sfx('join');
+  render();
 }
 
 function handleShotResult(msg) {
@@ -894,7 +1026,6 @@ function handleShotResult(msg) {
   const anyHit = results.some(r => r.hit);
   if (msg.kind === 'carpet') S.missStreak = 0;
   else S.missStreak = anyHit ? 0 : S.missStreak + 1;
-  S.turnShots[me] += 1;
   const agg = { hit: anyHit, decoySunk: results.some(r => r.sunk?.decoy) };
   setTurn(msg.dead ? null : advanceTurn(me, agg));
 
@@ -918,6 +1049,7 @@ function handleShotResult(msg) {
     }
   }
   sfx(loudest);
+  announce(results, '', true);
 
   if (msg.dead) {
     net.send({ type: 'reveal', fleet: S.myFleet });
@@ -943,6 +1075,8 @@ function handleShotResult(msg) {
         endGame('lose');
         return;
       }
+      // 自爆反擊也可能打沉我的第 9 艘，一樣要讓幽靈船登場
+      if (maybeGhostOut()) return;
     }
   }
 }
@@ -984,7 +1118,7 @@ function requestRematch() {
 }
 
 function resetForRematch() {
-  S.myFleet = emptyFleet();
+  S.myFleet = emptyFleet(spec());
   S.incoming = new Map();
   S.enemy = newTracker();
   S.enemyReveal = null;
@@ -1029,7 +1163,6 @@ function specResult(msg) {
     if (r.sunk?.decoy) for (const c of r.sunk.cells) S.spec[side].shots.set(key(c.x, c.y), 'decoy');
     S.specLast[side] = k;
   }
-  S.turnShots[shooter] += 1;
   const agg = { hit: results.some(r => r.hit), decoySunk: results.some(r => r.sunk?.decoy) };
   setTurn(msg.dead ? null : advanceTurn(shooter, agg));
   const who = `<b>${esc(nameOf(shooter))}</b>`;
@@ -1102,6 +1235,95 @@ function applySpecSnapshot(msg) {
 }
 
 // ── 聊天 / 戰報 ──────────────────────────────────────
+// 戰報裡的強化名稱：滑過（或用鍵盤 Tab 到）會浮出它的效果說明。
+// 戰報面板是 overflow:auto，所以提示層得用 fixed 定位，不然會被裁掉。
+function augRef(id) {
+  const a = AUG[id];
+  if (!a) return '';
+  return `<span class="aug-ref tier-${a.tier}" data-aug="${id}" tabindex="0" role="button"
+    aria-label="${esc(a.name)}：${esc(a.desc)}">${esc(a.name)}</span>`;
+}
+
+function bindAugTips() {
+  const tip = $('augTip');
+  const log = $('battleLog');
+  let current = null;
+
+  const hide = () => {
+    tip.hidden = true;
+    current = null;
+    // 剛才暫停的自動捲動，現在一次補到底
+    if (log.dataset.hold) {
+      delete log.dataset.hold;
+      log.scrollTop = log.scrollHeight;
+    }
+  };
+
+  // 先量尺寸再決定放上面還下面，並夾在視窗內
+  const place = el => {
+    const r = el.getBoundingClientRect();
+    const t = tip.getBoundingClientRect();
+    const gap = 8;
+    let top = r.top - t.height - gap;
+    if (top < 8) top = Math.min(r.bottom + gap, innerHeight - t.height - 8);
+    let left = r.left + r.width / 2 - t.width / 2;
+    left = Math.max(8, Math.min(left, innerWidth - t.width - 8));
+    tip.style.top = `${top}px`;
+    tip.style.left = `${left}px`;
+  };
+
+  const show = el => {
+    const a = AUG[el.dataset.aug];
+    if (!a) return;
+    current = el;
+    const kind = { active: '主動 · 每局一次', passive: '被動', instant: '立即生效' }[a.kind];
+    tip.innerHTML = `<span class="aug-tip-head"><span class="hex-tier">${TIER_NAME[a.tier]}</span>
+      <b>${esc(a.name)}</b><span class="aug-tip-kind">${kind}</span></span><p>${esc(a.desc)}</p>`;
+    tip.className = `aug-tip tier-${a.tier}`;
+    tip.hidden = false;
+    log.dataset.hold = '1';   // 讀說明期間不要自動捲動
+    place(el);
+  };
+
+  // 戰報每收到一則新訊息就會自動捲到底。若這時直接關掉提示，
+  // 對戰中訊息不斷進來，等於提示會一直閃掉——所以改成跟著重新定位。
+  const follow = () => {
+    if (!current) return;
+    if (!current.isConnected) return hide();
+    const r = current.getBoundingClientRect();
+    const box = log.getBoundingClientRect();
+    // 捲出戰報可視範圍才收起來
+    if (r.bottom < box.top || r.top > box.bottom) hide();
+    else place(current);
+  };
+
+  log.addEventListener('pointerover', e => {
+    const el = e.target.closest('.aug-ref');
+    if (el && el !== current) show(el);
+  });
+  log.addEventListener('pointerout', e => {
+    const el = e.target.closest('.aug-ref');
+    if (el && !el.contains(e.relatedTarget)) hide();
+  });
+  // 觸控：點一下切換
+  log.addEventListener('click', e => {
+    const el = e.target.closest('.aug-ref');
+    if (!el) return hide();
+    el === current ? hide() : show(el);
+  });
+  log.addEventListener('focusin', e => {
+    const el = e.target.closest('.aug-ref');
+    if (el) show(el);
+  });
+  log.addEventListener('focusout', hide);
+  log.addEventListener('scroll', follow, { passive: true });
+  addEventListener('scroll', follow, { passive: true });
+  addEventListener('resize', hide);
+  // Esc 不在這裡自己攔——統一交給 init() 的優先序處理，
+  // 否則會變成「關掉提示的同時也跳進 Excel 上班模式」。
+  return { isOpen: () => !tip.hidden, hide };
+}
+
 function sysLog(html) {
   logLine($('battleLog'), html, 'sys');
 }
@@ -1144,6 +1366,8 @@ function render() {
   excel?.update();
 
   if (S.phase === 'setup') {
+    // 海克斯 9 艘船排單欄會把「準備完成」擠出畫面，改雙欄
+    $('shipDock').classList.toggle('two-col', S.myFleet.length > 6);
     renderDock($('shipDock'), S.myFleet, S.selectedShip);
     paintSetupBoard();
     const placed = isFleetPlaced(S.myFleet);
@@ -1170,9 +1394,9 @@ function render() {
     $('enemyTitle').textContent = `${nameOf(them)} 的海域`;
     $('myTitle').textContent = '我方海域';
     $('enemyFleetStatus').textContent =
-      `已擊沉 ${S.enemy.sunkShips.filter(s => !s.decoy).length} / ${SHIP_TYPES.length} 艘`;
+      `已擊沉 ${S.enemy.sunkShips.filter(s => !s.decoy).length} / ${totalShips()} 艘`;
     $('myFleetStatus').textContent =
-      `剩餘 ${remainingShips(S.myFleet)} / ${SHIP_TYPES.length} 艘`;
+      `剩餘 ${remainingShips(S.myFleet)} / ${totalShips()} 艘`;
 
     paintEnemyBoard(boards.enemy, S.enemy, S.lastMyShot, S.enemyReveal);
     paintBattleMine();
@@ -1182,6 +1406,12 @@ function render() {
     if (S.phase === 'over') {
       banner.classList.add('over');
       $('turnText').textContent = S.over === 'win' ? '你贏了 🏆' : '艦隊全滅 💥';
+    } else if (S.ghostPhase === 'placing') {
+      banner.classList.add('ghost');
+      $('turnText').textContent = '👻 幽靈船登場 — 挑一個位置';
+    } else if (S.ghostPhase === 'waiting') {
+      banner.classList.add('ghost');
+      $('turnText').textContent = `👻 ${nameOf(them)} 的幽靈船正在選位置…`;
     } else if (S.turn === me) {
       banner.classList.add('mine');
       $('turnText').textContent = S.pending ? '先選一個海克斯強化' : '輪到你了，選一格開火';
@@ -1198,8 +1428,11 @@ function render() {
     $('enemyBoard').classList.toggle('mode-cross', S.mode === 'cross');
     $('enemyLock').hidden = isMyTurn() || S.phase === 'over';
     $('enemyLock').querySelector('span').textContent =
-      S.turn === them ? `等 ${nameOf(them)} 出手…` : '砲彈飛行中…';
+      S.ghostPhase === 'placing' ? '👻 先讓幽靈船就位'
+      : S.ghostPhase === 'waiting' ? '👻 對手的幽靈船正在選位置…'
+      : S.turn === them ? `等 ${nameOf(them)} 出手…` : '砲彈飛行中…';
     $('myBoard').classList.toggle('live', S.mode === 'blink' || S.mode === 'blink-place');
+    $('myBoard').classList.toggle('ghost-place', S.ghostPhase === 'placing');
     renderModeBar();
     renderHexPane();
   }
@@ -1208,6 +1441,18 @@ function render() {
 // 我方海域（對戰中）：船 + 假船 + 來襲紀錄 + 躍遷預覽。
 function paintBattleMine() {
   paintMyBoard(boards.mine, S.myFleet, S.incoming, S.lastEnemyShot, S.decoy);
+  // 幽靈船佈署：把「照目前方向放得下」的起點都標出來。
+  // 自己的殘骸會卡位，讓人一格一格猜太痛苦（實測合法位置只剩 17～71 個）。
+  if (S.ghostPhase === 'placing') {
+    const ghost = ghostOf(S.myFleet);
+    if (ghost) {
+      for (let y = 0; y < 10; y++) for (let x = 0; x < 10; x++) {
+        if (canPlace(S.myFleet, ghost, x, y, S.dir)) {
+          boards.mine.get(key(x, y))?.classList.add('ghost-ok');
+        }
+      }
+    }
+  }
   // 躍遷選船時直接標出「哪幾艘能動」，不要讓人一艘艘點去試。
   if (S.mode === 'blink') {
     for (const ship of S.myFleet) {
@@ -1215,11 +1460,14 @@ function paintBattleMine() {
       for (const c of cellsOf(ship)) boards.mine.get(key(c.x, c.y))?.classList.add('blink-ok');
     }
   }
-  if (S.mode !== 'blink-place' || !S.hoverCell) return;
+  const placing = S.mode === 'blink-place' || S.ghostPhase === 'placing';
+  if (!placing || !S.hoverCell) return;
   const ship = S.myFleet.find(s => s.id === S.selectedShip);
   if (!ship) return;
   const [hx, hy] = S.hoverCell.split(',').map(Number);
-  const ok = canPlace([...S.myFleet, ...placementBlockers()], ship, hx, hy, S.dir);
+  // 幽靈船可以停在打過的水域，只是不能疊在自己的殘骸上
+  const blockers = S.ghostPhase === 'placing' ? [] : placementBlockers();
+  const ok = canPlace([...S.myFleet, ...blockers], ship, hx, hy, S.dir);
   for (const c of cellsOf({ ...ship, x: hx, y: hy, dir: S.dir })) {
     boards.mine.get(key(c.x, c.y))?.classList.add(ok ? 'preview-ok' : 'preview-bad');
   }
@@ -1233,8 +1481,14 @@ function renderModeBar() {
     'blink': '🌀 緊急躍遷：點我方海域一艘「完全未受損」的船',
     'blink-place': '🌀 躍遷：點目標位置放下，R 旋轉（不能放在被打過的格子）',
   }[S.mode];
-  bar.hidden = !text;
-  $('modeText').textContent = text || '';
+  const ghostText = S.ghostPhase === 'placing'
+    ? '👻 幽靈船登場：點我方海域發光的格子，R 旋轉（可以停在打過的水域，但不能疊在殘骸上）'
+    : S.ghostPhase === 'waiting' ? '👻 對手的幽靈船正在選位置…' : null;
+  const show = ghostText || text;
+  bar.hidden = !show;
+  bar.classList.toggle('ghost', !!ghostText);
+  $('btnCancelMode').hidden = !!ghostText;   // 幽靈船不能取消，一定要選
+  $('modeText').textContent = show || '';
 }
 
 function renderHexPane() {
@@ -1281,8 +1535,8 @@ function renderPick() {
 function renderSpectator() {
   $('enemyTitle').textContent = `${nameOf('host')} 的海域`;
   $('myTitle').textContent = `${nameOf('guest')} 的海域`;
-  $('enemyFleetStatus').textContent = `被擊沉 ${S.spec.host.sunkShips.filter(s => !s.decoy).length} / ${SHIP_TYPES.length} 艘`;
-  $('myFleetStatus').textContent = `被擊沉 ${S.spec.guest.sunkShips.filter(s => !s.decoy).length} / ${SHIP_TYPES.length} 艘`;
+  $('enemyFleetStatus').textContent = `被擊沉 ${S.spec.host.sunkShips.filter(s => !s.decoy).length} / ${totalShips()} 艘`;
+  $('myFleetStatus').textContent = `被擊沉 ${S.spec.guest.sunkShips.filter(s => !s.decoy).length} / ${totalShips()} 艘`;
   paintEnemyBoard(boards.enemy, S.spec.host, S.specLast.host, S.specReveal.host);
   paintEnemyBoard(boards.mine, S.spec.guest, S.specLast.guest, S.specReveal.guest);
   $('enemyBoard').classList.remove('live');
@@ -1408,7 +1662,9 @@ function init() {
       readyMe: !!S.ready[S.role],
       selectedShip: S.myFleet.find(s => s.id === S.selectedShip) || null,
       placed: isFleetPlaced(S.myFleet),
-      placedCount: S.myFleet.filter(s => s.x != null).length,
+      placedCount: S.myFleet.filter(s => s.x != null && !s.ghost).length,
+      deployTotal: deployCount(spec()),
+      ghostPhase: S.ghostPhase,
       remaining: remainingShips(S.myFleet),
       mayhem: S.mayhem,
       mode: S.mode,
@@ -1420,11 +1676,13 @@ function init() {
     onReady: markReady,
     onPlace(x, y, dir) {
       if (S.phase === 'battle') {
-        if (S.mode === 'blink' || S.mode === 'blink-place') { S.dir = dir; blinkClick(x, y); }
+        S.dir = dir;
+        if (S.ghostPhase === 'placing') placeGhost(x, y);
+        else if (S.mode === 'blink' || S.mode === 'blink-place') blinkClick(x, y);
         return;
       }
       if (!S.selectedShip) {
-        const next = S.myFleet.find(s => s.x == null);
+        const next = S.myFleet.find(s => s.x == null && !s.ghost);
         if (!next) return;
         S.selectedShip = next.id;
       }
@@ -1441,7 +1699,7 @@ function init() {
       render();
     },
     onRandom() {
-      S.myFleet = randomFleet();
+      S.myFleet = randomFleet(spec());
       S.selectedShip = null;
       render();
     },
@@ -1474,7 +1732,8 @@ function init() {
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       e.preventDefault();
-      if (!help.hidden) closeHelp();
+      if (augTips?.isOpen()) augTips.hide();
+      else if (!help.hidden) closeHelp();
       else if (S.mode && !excel.active && !boss.active) { cancelMode(); render(); }
       else if (boss.active) boss.exit();
       else if (excel.active) excel.exit();
@@ -1500,11 +1759,13 @@ function init() {
   });
   $('myBoard').addEventListener('click', e => {
     const cell = e.target.closest('.cell');
-    if (!cell || !S.mode?.startsWith('blink')) return;
-    blinkClick(+cell.dataset.x, +cell.dataset.y);
+    if (!cell) return;
+    const x = +cell.dataset.x, y = +cell.dataset.y;
+    if (S.ghostPhase === 'placing') placeGhost(x, y);
+    else if (S.mode?.startsWith('blink')) blinkClick(x, y);
   });
   $('myBoard').addEventListener('contextmenu', e => {
-    if (S.mode !== 'blink-place') return;
+    if (S.mode !== 'blink-place' && S.ghostPhase !== 'placing') return;
     e.preventDefault();
     rotate();
   });
@@ -1529,6 +1790,7 @@ function init() {
 
   bindSetupInteractions();
   bindChat();
+  augTips = bindAugTips();
 
   S.selectedShip = S.myFleet[0].id;
   setScreen('screenLobby');

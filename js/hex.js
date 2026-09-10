@@ -2,7 +2,7 @@
 // 判定原則跟本體一樣：誰的棋盤誰判，攻方只收到結果。
 import { SIZE, key, inBounds, cellsOf, occupancy, canPlace, receiveFire } from './game.js';
 
-export const PICK_EVERY = 6;   // 每開火 N 次選一次強化（第 0 次 = 第一回合）
+export const PICK_EVERY = 10;  // 每開火 N 次選一次強化（第 0 次 = 第一回合）
 
 export const AUGMENTS = [
   { id: 'sonar',     name: '海克斯聲納', tier: 'silver', cat: '偵察', kind: 'active', once: true,
@@ -50,6 +50,44 @@ export function rollOffers(owned, exclude = []) {
     out.push(pool.splice(Math.min(idx, pool.length - 1), 1)[0].id);
   }
   return out;
+}
+
+// 換誰出手。攻方／守方／觀戰者三邊都跑這同一份，狀態全是公開的才不會不同步。
+// st = { variant, owned:{host:[],guest:[]}, remaining:{host,guest},
+//        extra:{host,guest}, turnShots:{host,guest}, bonus:{host,guest} }
+// st 會被就地更新；回傳下一個出手的人。
+export function advanceTurn(shooter, agg, st) {
+  const defender = shooter === 'host' ? 'guest' : 'host';
+  const has = (side, id) => st.owned[side].includes(id);
+
+  // 關鍵：乘勝追擊／幽靈艦補償送的那一發是「額外的」，
+  // 不該吃掉這一輪的基本開火額度，否則背水一戰的 2 槍會被連鎖吃光。
+  if (st.bonus[shooter]) st.bonus[shooter] = false;
+  else st.turnShots[shooter] += 1;
+
+  let next;
+  if (agg.decoySunk) {
+    // 打沉的是假船：攻方回合立刻結束，守方還多得一發
+    st.extra[defender] += 1;
+    next = defender;
+  } else if (agg.hit && (st.variant === 'hit-again' || has(shooter, 'press'))) {
+    next = shooter;
+    st.bonus[shooter] = true;
+  } else if (st.extra[shooter] > 0) {
+    st.extra[shooter] -= 1;
+    next = shooter;
+    st.bonus[shooter] = true;
+  } else if (has(shooter, 'laststand') && st.remaining[shooter] === 1 && st.turnShots[shooter] < 2) {
+    next = shooter;
+  } else {
+    next = defender;
+  }
+
+  if (next !== shooter) {
+    st.turnShots[shooter] = 0;
+    st.bonus[shooter] = false;
+  }
+  return next;
 }
 
 export const crossCells = (x, y) =>

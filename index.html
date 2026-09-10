@@ -102,7 +102,14 @@
           <input type="checkbox" id="chkMayhem">
           <span>⚡ 海克斯大亂鬥</span>
         </label>
-        <p class="rules-note mayhem-note" id="mayhemNote" hidden>第一回合與每開 6 槍，從 3 個隨機強化裡選 1 個。聲納、十字爆破、幽靈艦隊、同歸於盡…共 12 種。</p>
+        <div class="mayhem-note" id="mayhemNote" hidden>
+          <p class="mayhem-time"><span>⏱</span> 一場約 <b>17–21 分鐘</b>（中位 19 分、約 220 發）<br><span class="mayhem-sub">經典模式約 8–10 分</span></p>
+          <details class="mayhem-more">
+            <summary>這模式改了什麼</summary>
+            <p><b>10 艘船</b>：先擺 9 艘（5,4,4,3,3,2,2,1,1 格）＋ 保留的 <b>1 格幽靈船</b>。第一回合與每開 <b>10 槍</b>，從 3 個隨機強化裡選 1 個，共 12 種。</p>
+            <p>前 9 艘全沉時 <b>👻 幽靈船登場</b>：你重新挑位置，對手的落彈紀錄全部作廢——擊沉她才算輸贏。</p>
+          </details>
+        </div>
         <p class="rules-note" id="rulesNote">由房主決定規則。</p>
       </div>
 
@@ -115,6 +122,7 @@
 <!-- ── 對戰 ─────────────────────────────────────────── -->
 <main class="screen battle" id="screenBattle" hidden>
   <div class="turn-banner" id="turnBanner"><span id="turnText">準備開戰</span></div>
+  <div class="action-banner" id="actionBanner" hidden></div>
   <div class="mode-bar" id="modeBar" hidden>
     <span id="modeText"></span>
     <button class="btn btn-ghost btn-sm" id="btnCancelMode" type="button">取消（Esc）</button>
@@ -234,7 +242,7 @@
           <ul>
             <li>輪到你時，上方橫幅變青色、敵方海域亮起，游標變準星</li>
             <li>點一格開火。<span class="help-hit">✕</span> 命中、<span class="help-miss">●</span> 落空、<span class="help-sunk">紅底</span> 擊沉</li>
-            <li>金框是最新一發，戰報在右側即時更新</li>
+            <li>金框是最新一發。每次出手畫面<b>中上方會跳提示</b>，不用一直盯右側戰報</li>
             <li>連射規則開啟時，命中可以繼續開火，落空才換人</li>
             <li>終局會揭曉雙方船位；按 <b>再來一局</b>，對方也按了就重新擺船</li>
           </ul>
@@ -251,7 +259,22 @@
 
         <section data-sec="mayhem" hidden>
           <h3>⚡ 海克斯大亂鬥</h3>
-          <p>房主在擺船階段勾選。<b>第一回合</b>以及<b>每開 6 槍</b>，輪到你時會跳出 3 個隨機強化，選 1 個。選了什麼對手看得到。主動技能在右側 <b>⚡ 海克斯</b> 分頁按「使用」。</p>
+          <p>房主在擺船階段勾選。整套規則都不一樣：</p>
+          <table class="help-keys">
+            <tr><td>艦隊編制</td><td><b>10 艘</b>：5,4,4,3,3,2,2,1,1 格共 9 艘先擺，外加保留的 <b>1 格幽靈船</b>（經典是 5 艘 17 格）</td></tr>
+            <tr><td>強化抽選</td><td>第一回合以及<b>每開 10 槍</b>，從 3 個隨機強化裡選 1 個</td></tr>
+            <tr><td>一場時間</td><td>約 <b>17–21 分鐘</b>（中位 19 分、約 220 發）</td></tr>
+          </table>
+          <h4>👻 幽靈船</h4>
+          <p>你的<b>前 9 艘全部被擊沉</b>時，雙方都會收到「幽靈船已出沒」的通知，戰鬥暫停：</p>
+          <ul>
+            <li>你重新挑一個位置讓她現身——可以停在<b>已經被打過的水域</b>，只是不能疊在自己的殘骸上。畫面會把所有合法位置<b>標成發光的格子</b>，按 <kbd>R</kbd> 旋轉即時更新</li>
+            <li>放好的瞬間，<b>對手的落彈紀錄全部作廢</b>（殘骸還留在圖上），他得從頭找起</li>
+            <li>只有<b>擊沉幽靈船</b>才算贏。她只有 <b>1 格</b>，命中即沉——但也代表沒有任何線索可循，平均要翻 <b>50 多發</b>才找得到</li>
+          </ul>
+          <p class="help-tip">所以在海克斯模式下，把對手打到剩最後一艘完全不代表快贏了——這一格往往比前面 9 艘加起來還難啃。<b>背水一戰</b>與<b>海克斯聲納</b>在這個階段最有價值。</p>
+          <h4>強化一覽</h4>
+          <p>選了什麼對手看得到。主動技能在右側 <b>⚡ 海克斯</b> 分頁按「使用」。戰報裡的強化名稱<b>滑鼠移上去可以看效果</b>。</p>
           <h4>偵察與情報</h4>
           <table class="help-keys">
             <tr><td>海克斯聲納 <i>銀·主動</i></td><td>消耗一回合，點一格掃描周圍 3×3，只回「有」或「沒有」船。每局一次</td></tr>
@@ -276,7 +299,7 @@
             <tr><td>同歸於盡 <i>稜鏡·被動</i></td><td>你的船被擊沉時，對敵方隨機一格有船位置造成 1 次必定命中</td></tr>
             <tr><td>艦隊重組 <i>稜鏡·主動</i></td><td>消耗一回合，所有未受損的船隨機換位。每局一次</td></tr>
           </table>
-          <p class="help-tip">Excel 模式也能玩：強化選單會用 Excel 對話框跳出來，主動技能對應 <kbd>F2</kbd> <kbd>F3</kbd> <kbd>F4</kbd>（照你擁有的順序），然後用游標選目標、Enter 確認。</p>
+          <p class="help-tip">Excel 模式也能玩：強化選單會用 Excel 對話框跳出來，主動技能對應 <kbd>F2</kbd> <kbd>F3</kbd> <kbd>F4</kbd>（照你擁有的順序），然後用游標選目標、Enter 確認。幽靈船佈署也一樣用方向鍵 + Enter。</p>
         </section>
 
         <section data-sec="excel" hidden>
@@ -329,6 +352,8 @@
     </div>
   </div>
 </div>
+
+<div class="aug-tip" id="augTip" role="tooltip" hidden></div>
 
 <div class="toast-stack" id="toastStack"></div>
 
