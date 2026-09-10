@@ -8,7 +8,17 @@ const ac = () => {
   return ctx;
 };
 
-export const setSoundEnabled = on => { enabled = on; };
+export function setSoundEnabled(on) {
+  enabled = on;
+  if (!bgm || !bgmGain) return;
+  // 靜音只是把音量拉到 0，播放進度繼續走——恢復時要接得回去，不是重新開始。
+  if (on && bgmSrc) {
+    if (bgm.paused) bgm.play().catch(() => {});
+    rampGain(0.55, 0.4);
+  } else if (!on) {
+    rampGain(0, 0.25);
+  }
+}
 export const isSoundEnabled = () => enabled;
 // 瀏覽器要求先有使用者手勢才准出聲，開場點擊時呼叫一次。
 export const unlockAudio = () => { if (enabled) ac(); };
@@ -74,4 +84,51 @@ const play = {
 export function sfx(name) {
   if (!enabled) return;
   try { play[name]?.(); } catch { /* 音效壞掉不該影響遊戲 */ }
+}
+
+// ── 背景音樂：目前只有「虛式「茈」發動後循環播放」這一種用途 ──
+// 跟音效不同，這是真的 <audio> 檔案，不是合成的，所以獨立管理，
+// 但一樣尊重 setSoundEnabled() 的全域靜音開關（上班模式進出會用到）。
+//
+// 淡入淡出刻意用 Web Audio 的 GainNode + AudioParam 排程，不用 rAF/setTimeout
+// 手刻——那類 JS 計時器在分頁切到背景時會被瀏覽器大幅節流甚至暫停，音量會卡在
+// 半路動不了；GainNode 的排程是瀏覽器音訊時脈自己在跑，分頁在不在前景都準。
+let bgm = null;         // <audio> 元素
+let bgmGain = null;     // 接在它跟喇叭之間的音量旋鈕
+let bgmSrc = null;      // 記著「現在應該要播哪首」，靜音期間不出聲但不忘記
+
+function ensureBGM(src) {
+  if (bgm) return;
+  bgm = new Audio();
+  bgm.loop = true;
+  bgm.preload = 'auto';
+  const c = ac();
+  bgmGain = c.createGain();
+  bgmGain.gain.value = 0;
+  c.createMediaElementSource(bgm).connect(bgmGain).connect(c.destination);
+}
+
+function rampGain(target, seconds) {
+  const c = ac();
+  const g = bgmGain.gain;
+  g.cancelScheduledValues(c.currentTime);
+  g.setValueAtTime(g.value, c.currentTime);       // 從目前值接著滑，不會跳一下
+  g.linearRampToValueAtTime(target, c.currentTime + seconds);
+}
+
+export function playBGM(src, { volume = 0.55, fadeMs = 900 } = {}) {
+  bgmSrc = src;
+  ensureBGM(src);
+  const already = bgm.src.endsWith(src) && !bgm.paused;
+  bgm.src = src;
+  if (!enabled) return;              // 靜音中就只記錄，開聲音時 setSoundEnabled 會補播
+  if (!already) bgm.play().catch(() => { /* 還沒被使用者手勢解鎖就安靜放棄 */ });
+  rampGain(volume, fadeMs / 1000);
+}
+
+export function stopBGM({ fadeMs = 700 } = {}) {
+  bgmSrc = null;
+  if (!bgm || bgm.paused) return;
+  rampGain(0, fadeMs / 1000);
+  setTimeout(() => { bgm.pause(); bgm.currentTime = 0; }, fadeMs + 50);
 }

@@ -12,7 +12,7 @@ import {
   relocateUndamaged, decoyAsShip, resolveCell,
 } from './hex.js';
 import { createNet, makeRoomCode } from './net.js';
-import { sfx, setSoundEnabled, isSoundEnabled, unlockAudio } from './audio.js';
+import { sfx, setSoundEnabled, isSoundEnabled, unlockAudio, playBGM, stopBGM } from './audio.js';
 import { initBossMode } from './boss.js';
 import { initExcelMode } from './excel.js';
 import { initCutscene } from './cutscene.js';
@@ -78,6 +78,9 @@ const S = {
 // 這一局用哪套艦隊編制（海克斯 10 艘 / 經典 5 艘）
 const spec = () => fleetSpec(S.mayhem);
 const totalShips = () => spec().length;
+
+// 虛式「茈」發動時的專屬 BGM：不管哪一方發動，兩邊都會聽到，一直循環到這局結束或重來。
+const HOLLOWPURPLE_BGM = 'assets/hollowpurple-bgm.mp3';
 
 const opposite = side => (side === 'host' ? 'guest' : 'host');
 const isPlayer = () => S.role === 'host' || S.role === 'guest';
@@ -648,6 +651,7 @@ function startBattle(first, variant, mayhem) {
 }
 
 function resetMayhem() {
+  stopBGM();   // 新的一局開始，別讓上一局發動過的虛式「茈」BGM 繼續放
   S.aug = { host: freshAug(), guest: freshAug() };
   S.shotsFired = { host: 0, guest: 0 };
   S.turnShots = { host: 0, guest: 0 };
@@ -835,6 +839,7 @@ function fire(x, y) {
     S.aug[S.role].used.hollowpurple = true;
     S.mode = null;
     cutscene?.play();           // 攻方自己也要看到——這是本局最戲劇性的一擊
+    playBGM(HOLLOWPURPLE_BGM);
     return fireCells(cells, 'hollowpurple');
   }
   if (S.mode) return;
@@ -900,6 +905,7 @@ function handleIncomingFire(msg) {
   if (msg.kind === 'hollowpurple') {
     logLine($('battleLog'), `${who} 發動了 ⚡ 虛式「茈」！`, 'sunk');
     cutscene?.play();
+    playBGM(HOLLOWPURPLE_BGM);
   }
   let loudest = 'miss';
   for (const r of results) {
@@ -1185,7 +1191,7 @@ function specResult(msg) {
   const agg = { hit: results.some(r => r.hit), decoySunk: results.some(r => r.sunk?.decoy) };
   setTurn(msg.dead ? null : advanceTurn(shooter, agg));
   const who = `<b>${esc(nameOf(shooter))}</b>`;
-  if (msg.kind === 'hollowpurple') cutscene?.play();
+  if (msg.kind === 'hollowpurple') { cutscene?.play(); playBGM(HOLLOWPURPLE_BGM); }
   let loudest = 'miss';
   for (const r of results) {
     const at = cellName(r.x, r.y);
