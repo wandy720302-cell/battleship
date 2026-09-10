@@ -16,6 +16,7 @@ import { sfx, setSoundEnabled, isSoundEnabled, unlockAudio } from './audio.js';
 import { initBossMode } from './boss.js';
 import { initExcelMode } from './excel.js';
 import { initCutscene } from './cutscene.js';
+import { initDevTools } from './devtools.js';
 import {
   $, buildBoard, paintMyBoard, paintEnemyBoard, renderDock,
   logLine, toast, banner, setScreen, esc, cellName,
@@ -1665,6 +1666,30 @@ function init() {
     },
   };
   cutscene = initCutscene();
+  initDevTools({
+    getState: () => ({ phase: S.phase, mayhem: S.mayhem, owned: S.aug[S.role]?.owned }),
+    onQuickReady() {
+      S.myFleet = randomFleet(spec());
+      S.selectedShip = null;
+      markReady();
+    },
+    onSinkTo(n) {
+      // 面板按鈕標的是「remainingShips() 要變成幾」，但那個計數連還沒現身的
+      // 幽靈船都算「活著」（hits=0 < size），所以海克斯模式下要打到 n 得把
+      // 非幽靈船打到只剩 n-1 艘——不然按了「2 艘」條件卻還是刷不到虛式「茈」。
+      const ghostAlive = S.myFleet.some(s => s.ghost && s.hits.length < s.size);
+      const target = ghostAlive ? Math.max(0, n - 1) : n;
+      const alive = S.myFleet.filter(s => !s.ghost && s.hits.length < s.size);
+      while (alive.length > target) alive.pop().hits = [0, 1, 2, 3, 4];
+      render();
+    },
+    onForceOwn(id) {
+      // 借用 choosePick 本來的邏輯（網路同步、幽靈艦部署、內線情報請求都算對），
+      // 只是不用等真的抽到——塞進 S.pending 讓它以為這是一次合法的三選一。
+      S.pending = [id];
+      choosePick(id);
+    },
+  });
   boss = initBossMode(workHooks);
   excel = initExcelMode({
     ...workHooks,

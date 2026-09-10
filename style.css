@@ -1795,6 +1795,80 @@ input::placeholder { color: var(--text-mute); }
   }
 }
 
+/* ── 開發者測試面板（?dev=1 才會出現） ────────────── */
+#devtools {
+  position: fixed;
+  left: 14px; bottom: 14px;
+  z-index: 700;   /* 蓋過所有東西，含過場動畫——測試時要隨時關得到 */
+  font-family: system-ui, sans-serif;
+}
+.dev-toggle {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  border: 1px solid #ff8a3d;
+  background: #2a1608;
+  color: #ffb877;
+  font-size: 1.1rem;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0,0,0,.5);
+}
+.dev-toggle:hover { background: #3a1e0c; }
+.dev-panel {
+  position: absolute;
+  left: 0; bottom: 48px;
+  width: 280px;
+  background: #1a1006;
+  border: 1px solid #ff8a3d;
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.6);
+  font-size: .82rem;
+  color: #ffe0c2;
+}
+.dev-head {
+  display: flex; align-items: center; gap: 8px;
+  font-weight: 700; margin-bottom: 10px; color: #ffb877;
+}
+.dev-badge {
+  font-size: .68rem; font-weight: 400;
+  background: rgba(255,138,61,.18);
+  border: 1px solid rgba(255,138,61,.4);
+  border-radius: 999px;
+  padding: 1px 7px;
+  color: #ffb877;
+}
+.dev-sec { margin: 10px 0 6px; color: #d9a875; font-size: .76rem; }
+.dev-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.dev-btn {
+  font: inherit;
+  font-size: .78rem;
+  padding: 6px 10px;
+  border-radius: 7px;
+  border: 1px solid #ff8a3d;
+  background: rgba(255,138,61,.12);
+  color: #ffe0c2;
+  cursor: pointer;
+  flex: 1 1 auto;
+}
+.dev-btn:hover { background: rgba(255,138,61,.28); }
+.dev-btn-block { width: 100%; margin-top: 7px; }
+.dev-select {
+  width: 100%;
+  font: inherit;
+  font-size: .8rem;
+  padding: 6px 8px;
+  border-radius: 7px;
+  border: 1px solid #ff8a3d;
+  background: #2a1608;
+  color: #ffe0c2;
+}
+.dev-note {
+  margin: 8px 0 0;
+  min-height: 1.4em;
+  font-size: .74rem;
+  color: #d9a875;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: .01ms !important;
