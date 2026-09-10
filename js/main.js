@@ -1305,6 +1305,34 @@ function renderSpectator() {
   }
 }
 
+// 大廳背景影片：11MB 不是每個人都該付的代價，所以省流量模式、
+// 偏好減少動態、或窄螢幕就只留 poster 靜圖。
+function setupLobbyVideo() {
+  const video = $('lobbyVideo');
+  if (!video) return;
+  const saveData = navigator.connection?.saveData;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (saveData || reduce || innerWidth < 560) return;
+
+  video.addEventListener('canplay', () => video.classList.add('ready'), { once: true });
+  video.addEventListener('error', () => video.remove(), { once: true });
+  video.src = 'assets/lobby.mp4';
+  video.play().catch(() => { /* 瀏覽器擋自動播放就維持 poster */ });
+
+  // 離開大廳後別讓它在背後空轉吃電。
+  const stopWhenHidden = () => {
+    const inLobby = !$('screenLobby').hidden;
+    if (inLobby && video.paused) video.play().catch(() => {});
+    else if (!inLobby && !video.paused) video.pause();
+  };
+  new MutationObserver(stopWhenHidden)
+    .observe($('screenLobby'), { attributes: true, attributeFilter: ['hidden'] });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) video.pause();
+    else stopWhenHidden();
+  });
+}
+
 // ── 啟動 ─────────────────────────────────────────────
 function init() {
   boards.setup = buildBoard($('setupBoard'));
@@ -1315,6 +1343,8 @@ function init() {
     const saved = localStorage.getItem('bship-name');
     if (saved) $('inpName').value = saved;
   } catch {}
+
+  setupLobbyVideo();
 
   const hashCode = location.hash.replace('#', '').trim().toUpperCase();
   if (/^[A-Z0-9]{6}$/.test(hashCode)) {

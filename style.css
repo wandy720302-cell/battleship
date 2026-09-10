@@ -194,15 +194,58 @@ input::placeholder { color: var(--text-mute); }
   display: grid;
   place-items: center;
   padding: 28px 18px;
+  position: relative;
+  overflow: hidden;
 }
+
+/* 大廳背景影片：兩艘軍艦在夕陽下對峙 */
+.lobby-bg { position: absolute; inset: 0; z-index: 0; }
+.lobby-bg video,
+.lobby-bg::before {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* 放大讓四邊都吃掉一截：左上的 AI 角標會被裁掉，
+     右下浮水印再交給下面那道底部漸層蓋掉（純靠裁切要犧牲太多構圖） */
+  transform: scale(1.13);
+}
+/* video 還沒開始載時，poster 先由 CSS 背景頂著，避免一片黑 */
+.lobby-bg::before {
+  content: "";
+  background: url("assets/lobby-poster.jpg") center/cover no-repeat;
+}
+.lobby-bg video {
+  opacity: 0;
+  transition: opacity 1.1s ease;
+}
+.lobby-bg video.ready { opacity: 1; }
+
+/* 壓一層深藍，讓暖色調的夕陽跟站上的深海配色接得起來，卡片也才讀得到 */
+.lobby-bg-veil {
+  position: absolute;
+  inset: 0;
+  background:
+    /* 上下壓暗讓頂欄與卡片邊緣收得住，中段留白給夕陽；
+       最後 12% 收到近乎全黑，順便把影片右下角的浮水印吃掉 */
+    linear-gradient(180deg,
+      rgba(5,16,30,.66) 0%, rgba(5,14,26,.16) 36%,
+      rgba(3,9,18,.62) 78%, rgba(3,9,18,.99) 96%),
+    /* 四角輕微暗角，中心幾乎不擋 */
+    radial-gradient(ellipse 82% 74% at 50% 56%, transparent 0%, rgba(4,10,20,.5) 100%);
+}
+.lobby-card, .lobby > *:not(.lobby-bg) { position: relative; z-index: 1; }
 
 .lobby-card {
   width: min(430px, 100%);
-  background: linear-gradient(180deg, rgba(17,35,58,.94), rgba(10,20,33,.94));
+  background: linear-gradient(180deg, rgba(15,32,54,.84), rgba(8,18,31,.9));
   border: 1px solid var(--line);
   border-radius: 20px;
   padding: clamp(24px, 5vw, 36px);
-  box-shadow: var(--shadow);
+  /* 背後有影片在動，卡片要壓得住才讀得到字 */
+  backdrop-filter: blur(14px) saturate(1.1);
+  box-shadow: var(--shadow), 0 0 90px rgba(3, 8, 17, .6);
 }
 
 .lobby-hero { text-align: center; margin-bottom: 26px; }
