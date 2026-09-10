@@ -11,6 +11,7 @@ import {
   advanceTurn as hexAdvanceTurn,
   nearShip, sonarPresent, randomDecoy, randomShipCell, isUndamaged,
   relocateUndamaged, decoyAsShip, resolveCell,
+  lineCells, linePresent, squareCells2x2, shiftShip, healRandomCell, randomEmptyCell,
 } from './hex.js';
 import { createNet, makeRoomCode } from './net.js';
 import { sfx, setSoundEnabled, isSoundEnabled, unlockAudio, playBGM, stopBGM } from './audio.js';
@@ -63,14 +64,18 @@ const S = {
   turnShots: { host: 0, guest: 0 },    // 這一輪已開幾槍（背水一戰用，額外射擊不計）
   bonus: { host: false, guest: false },// 下一發是不是「額外送的」（乘勝追擊／幽靈艦補償）
   extra: { host: 0, guest: 0 },        // 額外射擊次數（幽靈艦被擊沉時給防守方）
+  baseShots: { host: 1, guest: 1 },    // 戰爭狂熱：永久疊加的每回合基礎開火次數
   pickedAt: new Set(),                 // 已經在哪些開火次數選過了
   pending: null,                       // 正在選的三個強化 id
-  mode: null,                          // null | sonar | cross | blink | blink-place
+  mode: null,                          // null | sonar | cross | blink | blink-place | ...(見 useActive)
   blink: null,                         // 躍遷中撿起的船原位（取消用）
-  missStreak: 0,                       // 機率補償：連續落空
+  maneuver: null,                      // 艦隊重編中撿起的船 id（取消用）
+  missStreak: 0,                       // 機率補償／航海日誌共用：連續落空
+  logbookUses: 0,                      // 航海日誌每局最多觸發 2 次
   // ── 大亂鬥（只有我自己知道的防守狀態） ──
   decoy: null,                         // { cells, hits }
   armorHits: new Map(),
+  dreadnoughtHits: new Map(),
   // ── 幽靈船 ──
   ghostPhase: null,                    // null | 'placing'(我在佈署) | 'waiting'(等對方佈署)
   ghostOut: { host: false, guest: false },  // 誰的幽靈船已經登場
@@ -264,6 +269,22 @@ function onMessage(msg) {
       }
       break;
 
+    case 'logbook-req':
+      if (fromOpp) {
+        const c = randomEmptyCell(defense(), msg.exclude || []);
+        net.send({ type: 'logbook', x: c?.x ?? null, y: c?.y ?? null });
+      }
+      break;
+
+    case 'logbook':
+      if (fromOpp && msg.x != null) {
+        const k = key(msg.x, msg.y);
+        if (canTarget(S.enemy, k)) S.enemy.shots.set(k, 'intel');
+        logLine($('battleLog'), `📖 航海日誌：<b>${cellName(msg.x, msg.y)}</b> 確定沒船`, 'sys');
+        sfx('turn');
+      }
+      break;
+
     case 'sonar':
       if (fromOpp) {
         const present = sonarPresent(defense(), msg.x, msg.y);
@@ -288,6 +309,35 @@ function onMessage(msg) {
       }
       break;
 
+    // 局部探測：跟聲納同一套 request/response，只是範圍是整條線、結果沿用同一組
+    // sonar Map（同一種「有/沒有」黃綠框視覺，不用另外做 UI）。
+    case 'sectorscan':
+      if (fromOpp) {
+        const present = linePresent(defense(), msg.orientation, msg.index);
+        net.send({ type: 'sectorscan-result', orientation: msg.orientation, index: msg.index, present });
+        const dir = msg.orientation === 'row' ? '橫列' : '直行';
+        logLine($('battleLog'), `<b>${esc(nameOf(from))}</b> 用局部探測掃了整條${dir}：${present ? '有船' : '沒船'}`, 'sys');
+        setTurn(S.role);
+      }
+      break;
+
+    case 'sectorscan-result':
+      if (fromOpp) {
+        for (const c of lineCells(msg.orientation, msg.index)) {
+          const k = key(c.x, c.y);
+          if (canTarget(S.enemy, k)) S.enemy.sonar.set(k, msg.present ? 'yes' : 'no');
+        }
+        const dir = msg.orientation === 'row' ? '橫列' : '直行';
+        logLine($('battleLog'), `📡 局部探測：這條${dir}<b>${msg.present ? '有船' : '沒船'}</b>`, msg.present ? 'hit' : 'miss');
+        sfx(msg.present ? 'hit' : 'miss');
+        setTurn(opposite(S.role));
+      } else if (S.role === 'spectator') {
+        const dir = msg.orientation === 'row' ? '橫列' : '直行';
+        logLine($('battleLog'), `<b>${esc(nameOf(opposite(from)))}</b> 局部探測整條${dir}：${msg.present ? '有船' : '沒船'}`, 'sys');
+        setTurn(from);
+      }
+      break;
+
     case 'blink':
     case 'rebuild':
       if (from === 'host' || from === 'guest') {
@@ -295,6 +345,25 @@ function onMessage(msg) {
         logLine($('battleLog'), `<b>${esc(nameOf(from))}</b> 發動 ${augRef(msg.type)}${what}`, 'sys');
         if (from !== S.role) setTurn(opposite(from));
         sfx('turn');
+      }
+      break;
+
+    case 'fleetmaneuver':
+      // 不消耗回合，純粹通知對手「船位換了、你的情報可能過時」。
+      if (from === 'host' || from === 'guest') {
+        logLine($('battleLog'), `<b>${esc(nameOf(from))}</b> 發動 ${augRef('fleetmaneuver')}，有一艘船平移了 1 格`, 'sys');
+        sfx('turn');
+      }
+      break;
+
+    case 'heal':
+      // 背水一戰（新版）自癒：對手／觀戰者要把自己畫面上那格的命中紀錄清掉，
+      // 不然雙方看到的傷勢會對不起來。
+      if (fromOpp) {
+        S.enemy.shots.delete(key(msg.x, msg.y));
+        logLine($('battleLog'), `<b>${esc(nameOf(from))}</b> 的船自動修復了 ${cellName(msg.x, msg.y)}`, 'sys');
+      } else if (S.role === 'spectator') {
+        S.spec[from].shots.delete(key(msg.x, msg.y));
       }
       break;
 
@@ -680,13 +749,17 @@ function resetMayhem() {
   S.turnShots = { host: 0, guest: 0 };
   S.bonus = { host: false, guest: false };
   S.extra = { host: 0, guest: 0 };
+  S.baseShots = { host: 1, guest: 1 };
   S.pickedAt = new Set();
   S.pending = null;
   S.mode = null;
   S.blink = null;
+  S.maneuver = null;
   S.missStreak = 0;
+  S.logbookUses = 0;
   S.decoy = null;
   S.armorHits = new Map();
+  S.dreadnoughtHits = new Map();
   S.ghostPhase = null;
   S.ghostOut = { host: false, guest: false };
   S.seq = 0;
@@ -705,6 +778,7 @@ function enterBattle() {
 // 我方防守判定用的資料包。
 const defense = () => ({
   fleet: S.myFleet, decoy: S.decoy, armor: has(S.role, 'armor'), armorHits: S.armorHits,
+  dreadnought: has(S.role, 'dreadnought'), dreadnoughtHits: S.dreadnoughtHits,
 });
 
 // 某一方還剩幾艘真船（幽靈艦不算）。三種身分都算得出來，回合判定才會一致。
@@ -723,7 +797,14 @@ function advanceTurn(shooter, agg) {
     extra: S.extra,
     turnShots: S.turnShots,
     bonus: S.bonus,
+    baseShots: S.baseShots,
   });
+}
+
+// 戰爭狂熱：這一波結果裡只要有真船（不含假船）被徹底擊沉，攻方永久多 1 發基礎開火。
+function applyWarmonger(shooter, results) {
+  const realSunk = results.filter(r => r.sunk && !r.sunk.decoy).length;
+  if (realSunk && has(shooter, 'warmonger')) S.baseShots[shooter] += realSunk;
 }
 
 function setTurn(side) {
@@ -739,11 +820,14 @@ function checkPick() {
   S.pickedAt.add(n);
   const me = S.role;
   const exclude = [];
-  if (S.variant === 'hit-again') exclude.push('press');
-  if (!S.myFleet.some(isUndamaged)) exclude.push('blink', 'rebuild');
+  if (S.variant === 'hit-again') exclude.push('press', 'pressattack2');
+  if (!S.myFleet.some(isUndamaged)) exclude.push('blink', 'rebuild', 'fleetmaneuver');
   const carrier = S.myFleet.find(s => s.id === 'carrier');
-  if (!carrier || carrier.hits.length >= carrier.size) exclude.push('armor');
+  if (!carrier || carrier.hits.length >= carrier.size) exclude.push('armor', 'dreadnought');
   if (!hollowPurpleEligible(remainingShips(S.myFleet))) exclude.push('hollowpurple');
+  // 幽靈艦隊／誘餌浮標共用同一個假船欄位，同時擁有沒有意義，讓後選的別再擠掉前一張的機會
+  if (S.aug[me].owned.includes('ghost')) exclude.push('decoybuoy');
+  if (S.aug[me].owned.includes('decoybuoy')) exclude.push('ghost');
   const offers = rollOffers(S.aug[me].owned, exclude);
   if (!offers.length) return;
   S.pending = offers;
@@ -761,10 +845,11 @@ function choosePick(id) {
   logLine($('battleLog'), `你選了 ⚡ ${augRef(id)}`, 'sys');
   sfx('turn');
   if (id === 'intel') net.send({ type: 'intel-req' });
-  if (id === 'ghost') {
-    S.decoy = randomDecoy(S.myFleet, placementBlockers());
-    if (S.decoy) sysLog('幽靈艦已就位（虛線那艘），對手看不出來');
-    else { sysLog('海域太滿，幽靈艦找不到地方停'); toast('沒空位放幽靈艦了', 'bad'); }
+  if (id === 'ghost' || id === 'decoybuoy') {
+    const size = id === 'ghost' ? 3 : 1;
+    S.decoy = randomDecoy(S.myFleet, placementBlockers(), size);
+    if (S.decoy) sysLog(`${id === 'ghost' ? '幽靈艦' : '誘餌浮標'}已就位（虛線那格），對手看不出來`);
+    else { sysLog('海域太滿，找不到地方放'); toast('沒空位可以放', 'bad'); }
   }
   $('pickModal').hidden = true;
   render();
@@ -776,13 +861,21 @@ function useActive(id) {
   cancelMode();
   switch (id) {
     case 'sonar':
+    case 'basicsonar':
     case 'cross':
+    case 'heavyartillery':
+    case 'sectorscan':
+    case 'orbitalstrike':
     case 'hollowpurple':
       S.mode = id;
       break;
     case 'blink':
       if (!S.myFleet.some(isUndamaged)) return toast('沒有完全未受損的船可以躍遷', 'bad');
       S.mode = 'blink';
+      break;
+    case 'fleetmaneuver':
+      if (!S.myFleet.some(isUndamaged)) return toast('沒有完全未受損的船可以移動', 'bad');
+      S.mode = 'fleetmaneuver';
       break;
     case 'rebuild': {
       if (!S.myFleet.some(isUndamaged)) return toast('沒有完全未受損的船', 'bad');
@@ -806,6 +899,7 @@ function cancelMode() {
   }
   S.mode = null;
   S.blink = null;
+  S.maneuver = null;
   S.selectedShip = null;
   S.hoverCell = null;
 }
@@ -835,8 +929,34 @@ function blinkClick(x, y) {
   render();
 }
 
-function doSonar(x, y) {
-  S.aug[S.role].used.sonar = true;
+// 艦隊重編：第一下點自己一艘未受損的船（選定），第二下點旁邊一格決定平移方向。不消耗回合。
+function maneuverClick(x, y) {
+  if (S.mode === 'fleetmaneuver') {
+    const occ = occupancy(S.myFleet).get(key(x, y));
+    if (!occ) return;
+    if (!isUndamaged(occ.ship)) return toast('只能移動完全未受損的船', 'bad');
+    S.maneuver = occ.ship.id;
+    S.mode = 'fleetmaneuver-dir';
+  } else if (S.mode === 'fleetmaneuver-dir') {
+    const ship = S.myFleet.find(s => s.id === S.maneuver);
+    const dx = Math.sign(x - ship.x), dy = Math.sign(y - ship.y);
+    if (Math.abs(dx) + Math.abs(dy) !== 1) return toast('只能選旁邊一格（上下左右）', 'bad');
+    if (!shiftShip(S.myFleet, placementBlockers(), S.maneuver, dx, dy)) {
+      return toast('那個方向擺不下（撞到船或超出邊界）', 'bad');
+    }
+    S.aug[S.role].used.fleetmaneuver = true;
+    S.mode = null;
+    S.maneuver = null;
+    net.send({ type: 'fleetmaneuver' });
+    sysLog('艦隊重編完成，船位移了 1 格');
+    sfx('turn');
+  }
+  render();
+}
+
+// id 是 'sonar' 或 'basicsonar'——兩張卡效果完全一樣，只是各自獨立的每局一次額度。
+function doSonar(id, x, y) {
+  S.aug[S.role].used[id] = true;
   S.mode = null;
   S.turn = null;
   net.send({ type: 'sonar', x, y });
@@ -845,9 +965,23 @@ function doSonar(x, y) {
   render();
 }
 
-function fire(x, y) {
+// 局部探測：shiftKey 決定掃整條「直行」還是「橫列」（預設橫列）。
+function doSectorScan(x, y, shiftKey) {
+  const orientation = shiftKey ? 'col' : 'row';
+  const index = orientation === 'row' ? y : x;
+  S.aug[S.role].used.sectorscan = true;
+  S.mode = null;
+  S.turn = null;
+  net.send({ type: 'sectorscan', orientation, index });
+  logLine($('battleLog'), `你對整條${orientation === 'row' ? '橫列' : '直行'}發射局部探測…`, 'sys');
+  sfx('fire');
+  render();
+}
+
+function fire(x, y, shiftKey = false) {
   if (!isMyTurn() || S.pending) return;
-  if (S.mode === 'sonar') return doSonar(x, y);
+  if (S.mode === 'sonar' || S.mode === 'basicsonar') return doSonar(S.mode, x, y);
+  if (S.mode === 'sectorscan') return doSectorScan(x, y, shiftKey);
   if (S.mode === 'cross') {
     const cells = crossCells(x, y).filter(c => canTarget(S.enemy, key(c.x, c.y)));
     // 五格都打過了：別默默吃掉這次寶貴的機會，換個位置
@@ -855,6 +989,22 @@ function fire(x, y) {
     S.aug[S.role].used.cross = true;
     S.mode = null;
     return fireCells(cells, 'cross');
+  }
+  if (S.mode === 'heavyartillery') {
+    const cells = squareCells2x2(x, y).filter(c => canTarget(S.enemy, key(c.x, c.y)));
+    if (!cells.length) return toast('這個 2×2 範圍全都打過了，換一格', 'bad');
+    S.aug[S.role].used.heavyartillery = true;
+    S.mode = null;
+    return fireCells(cells, 'heavyartillery');
+  }
+  if (S.mode === 'orbitalstrike') {
+    const orientation = shiftKey ? 'col' : 'row';
+    const index = orientation === 'row' ? y : x;
+    const cells = lineCells(orientation, index).filter(c => canTarget(S.enemy, key(c.x, c.y)));
+    if (!cells.length) return toast('這條線全都打過了，換一條', 'bad');
+    S.aug[S.role].used.orbitalstrike = true;
+    S.mode = null;
+    return fireCells(cells, 'orbitalstrike');
   }
   if (S.mode === 'hollowpurple') {
     const cells = bandCells(x, y).filter(c => canTarget(S.enemy, key(c.x, c.y)));
@@ -892,6 +1042,8 @@ function fireCells(cells, kind) {
   net.send({ type: 'fire', cells, kind, seq: S.seq });
   if (kind === 'cross') logLine($('battleLog'), '💣 十字爆破！', 'sys');
   if (kind === 'carpet') logLine($('battleLog'), '🎰 機率補償：地毯式轟炸 3 格', 'sys');
+  if (kind === 'heavyartillery') logLine($('battleLog'), '💥 重型火砲：轟炸 2×2 區域！', 'sys');
+  if (kind === 'orbitalstrike') logLine($('battleLog'), '🛰 軌道打擊：整條線翻開！', 'sunk');
   if (kind === 'hollowpurple') logLine($('battleLog'), '⚡ 你發動了虛式「茈」！', 'sunk');
   sfx('fire');
   render();
@@ -920,11 +1072,14 @@ function handleIncomingFire(msg) {
   const dead = fleetDestroyed(S.myFleet);
   net.send({ type: 'result', cells: results, kind: msg.kind || 'shot', seq: msg.seq, dead });
   const agg = { hit: results.some(r => r.hit), decoySunk: results.some(r => r.sunk?.decoy) };
+  applyWarmonger(shooter, results);
   setTurn(dead ? null : advanceTurn(shooter, agg));
 
   const who = `<b>${esc(nameOf(shooter))}</b>`;
   if (msg.kind === 'cross') logLine($('battleLog'), `${who} 發射十字爆破！`, 'sys');
   if (msg.kind === 'carpet') logLine($('battleLog'), `${who} 地毯式轟炸！`, 'sys');
+  if (msg.kind === 'heavyartillery') logLine($('battleLog'), `${who} 發射重型火砲！`, 'sys');
+  if (msg.kind === 'orbitalstrike') logLine($('battleLog'), `${who} 發動了 🛰 軌道打擊！`, 'sunk');
   if (msg.kind === 'hollowpurple') {
     logLine($('battleLog'), `${who} 發動了 ⚡ 虛式「茈」！`, 'sunk');
     cutscene?.play();
@@ -1074,7 +1229,24 @@ function handleShotResult(msg) {
   const anyHit = results.some(r => r.hit);
   if (msg.kind === 'carpet') S.missStreak = 0;
   else S.missStreak = anyHit ? 0 : S.missStreak + 1;
+  // 航海日誌：連續 3 次落空，自動標記 1 格「確定沒船」，每局最多 2 次。
+  if (S.missStreak >= 3 && has(me, 'logbook') && S.logbookUses < 2) {
+    S.missStreak = 0;
+    S.logbookUses++;
+    net.send({ type: 'logbook-req', exclude: [...S.enemy.shots.keys()] });
+  }
   const agg = { hit: anyHit, decoySunk: results.some(r => r.sunk?.decoy) };
+  applyWarmonger(me, results);
+  // 背水一戰（新版）：只剩最後一艘船時，這回合只要有命中就隨機修復自己 1 格。
+  if (anyHit && has(me, 'laststand2') && remainingOf(me) === 1) {
+    const healed = healRandomCell(S.myFleet);
+    if (healed) {
+      const ship = S.myFleet.find(s => s.id === healed.shipId);
+      const cell = cellsOf(ship)[healed.index];
+      S.incoming.delete(key(cell.x, cell.y));
+      net.send({ type: 'heal', x: cell.x, y: cell.y });
+    }
+  }
   setTurn(msg.dead ? null : advanceTurn(me, agg));
 
   let loudest = 'miss';
@@ -1212,8 +1384,11 @@ function specResult(msg) {
     S.specLast[side] = k;
   }
   const agg = { hit: results.some(r => r.hit), decoySunk: results.some(r => r.sunk?.decoy) };
+  applyWarmonger(shooter, results);
   setTurn(msg.dead ? null : advanceTurn(shooter, agg));
   const who = `<b>${esc(nameOf(shooter))}</b>`;
+  if (msg.kind === 'heavyartillery') logLine($('battleLog'), `${who} 發射重型火砲！`, 'sys');
+  if (msg.kind === 'orbitalstrike') logLine($('battleLog'), `${who} 發動了 🛰 軌道打擊！`, 'sunk');
   if (msg.kind === 'hollowpurple') { cutscene?.play(); playBGM(HOLLOWPURPLE_BGM); }
   let loudest = 'miss';
   for (const r of results) {
@@ -1532,6 +1707,12 @@ function renderModeBar() {
     'hollowpurple': '⚡ 虛式「茈」：點敵方海域一格，以這列為中心的 4 列（40 格）全部開火',
     'blink': '🌀 緊急躍遷：點我方海域一艘「完全未受損」的船',
     'blink-place': '🌀 躍遷：點目標位置放下，R 旋轉（不能放在被打過的格子）',
+    'basicsonar': '🔊 初級聲納：點敵方海域一格，掃描它周圍 3×3（消耗回合）',
+    'sectorscan': '📡 局部探測：點敵方海域一格掃整條橫列，按住 Shift 點則掃直行（消耗回合）',
+    'heavyartillery': '💥 重型火砲：點敵方海域一格，轟炸以它為角落的 2×2 區域（消耗回合）',
+    'orbitalstrike': '🛰 軌道打擊：點敵方海域一格翻開整條橫列，按住 Shift 點則翻整條直行（消耗回合）',
+    'fleetmaneuver': '🔧 艦隊重編：點我方海域一艘「完全未受損」的船（不消耗回合）',
+    'fleetmaneuver-dir': '🔧 艦隊重編：再點船旁邊一格（上下左右）決定平移方向',
   }[S.mode];
   const ghostText = S.ghostPhase === 'placing'
     ? '👻 幽靈船登場：點我方海域發光的格子，R 旋轉（可以停在打過的水域，但不能疊在殘骸上）'
@@ -1839,7 +2020,7 @@ function init() {
   $('enemyBoard').addEventListener('click', e => {
     const cell = e.target.closest('.cell');
     if (!cell) return;
-    fire(+cell.dataset.x, +cell.dataset.y);
+    fire(+cell.dataset.x, +cell.dataset.y, e.shiftKey);
   });
   $('myBoard').addEventListener('click', e => {
     const cell = e.target.closest('.cell');
@@ -1847,6 +2028,7 @@ function init() {
     const x = +cell.dataset.x, y = +cell.dataset.y;
     if (S.ghostPhase === 'placing') placeGhost(x, y);
     else if (S.mode?.startsWith('blink')) blinkClick(x, y);
+    else if (S.mode?.startsWith('fleetmaneuver')) maneuverClick(x, y);
   });
   $('myBoard').addEventListener('contextmenu', e => {
     if (S.mode !== 'blink-place' && S.ghostPhase !== 'placing') return;
