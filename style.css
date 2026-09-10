@@ -1786,6 +1786,39 @@ input::placeholder { color: var(--text-mute); }
   .cutscene-title { top: 6%; }
 }
 
+/* ── 通用技能發動閃圖（浪漫168突襲等）──────────────── */
+#imgflash {
+  position: fixed;
+  inset: 0;
+  z-index: 590;   /* 略低於虛式「茈」過場，避免兩個特效疊在一起時打架 */
+  background: rgba(2,0,8,.85);
+  display: flex; align-items: center; justify-content: center;
+  animation: cutscene-in .3s ease-out;
+  cursor: pointer;
+}
+#imgflash.out { animation: cutscene-out .26s ease-in forwards; }
+.imgflash-stage { position: relative; max-width: min(560px, 90vw); }
+.imgflash-img {
+  display: block;
+  width: 100%;
+  border-radius: 14px;
+  box-shadow: 0 0 60px rgba(197,140,255,.55), 0 0 140px rgba(140,80,255,.3);
+  animation: imgflash-pop .45s cubic-bezier(.2,.9,.3,1.2) backwards;
+}
+@keyframes imgflash-pop {
+  from { opacity: 0; transform: scale(.82); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.imgflash-title {
+  margin-top: 14px;
+  text-align: center;
+  font-size: clamp(1.1rem, 3.2vw, 1.6rem);
+  font-weight: 800;
+  letter-spacing: .1em;
+  color: #e6ccff;
+  text-shadow: 0 0 20px rgba(197,140,255,.8), 0 0 50px rgba(140,80,255,.5);
+}
+
 /* 偏好減少動態：不要硬讓文字消失又靜止，改成可捲動的靜態字幕框 */
 @media (prefers-reduced-motion: reduce) {
   .cutscene-crawl { animation: none !important; position: static; }

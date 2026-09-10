@@ -18,6 +18,7 @@ import { sfx, setSoundEnabled, isSoundEnabled, unlockAudio, playBGM, stopBGM } f
 import { initBossMode } from './boss.js';
 import { initExcelMode } from './excel.js';
 import { initCutscene } from './cutscene.js';
+import { initImageFlash } from './imageflash.js';
 import { initDevTools } from './devtools.js';
 import {
   $, buildBoard, paintMyBoard, paintEnemyBoard, renderDock,
@@ -87,6 +88,7 @@ const totalShips = () => spec().length;
 
 // 虛式「茈」發動時的專屬 BGM：不管哪一方發動，兩邊都會聽到，一直循環到這局結束或重來。
 const HOLLOWPURPLE_BGM = 'assets/hollowpurple-bgm.mp3';
+const ROMANTIC168_IMG = 'assets/romantic168.jpg';
 
 const opposite = side => (side === 'host' ? 'guest' : 'host');
 const isPlayer = () => S.role === 'host' || S.role === 'guest';
@@ -105,6 +107,7 @@ let boards = { setup: null, enemy: null, mine: null };
 let boss = null;   // 假 VSCode（純遮羞布）
 let excel = null;  // 假 Excel（可以在裡面打）
 let cutscene = null;  // 虛式「茈」發動時的過場
+let imgFlash = null;  // 浪漫168突襲等技能發動時的閃圖
 let augTips = null;
 
 // ── 網路事件 ─────────────────────────────────────────
@@ -282,6 +285,39 @@ function onMessage(msg) {
         if (canTarget(S.enemy, k)) S.enemy.shots.set(k, 'intel');
         logLine($('battleLog'), `📖 航海日誌：<b>${cellName(msg.x, msg.y)}</b> 確定沒船`, 'sys');
         sfx('turn');
+      }
+      break;
+
+    // 浪漫168突襲：被偷的那方自己決定要交出哪一張（隨機），保證公平——誰都不能
+    // 看到對方手牌來挑，只能隨機賭一把。
+    case 'romantic168-req':
+      if (fromOpp) {
+        const mine = S.aug[S.role].owned;
+        const pool = mine.filter(id => id !== 'romantic168');
+        const stolen = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+        if (stolen) S.aug[S.role].owned = mine.filter(id => id !== stolen);
+        net.send({ type: 'romantic168-result', stolen });
+        imgFlash?.play(ROMANTIC168_IMG, '領域展開・浪漫168');
+        if (stolen) logLine($('battleLog'), `<b>${esc(nameOf(from))}</b> 發動浪漫168突襲，偷走了你的 ${augRef(stolen)}！`, 'sunk');
+        else logLine($('battleLog'), `<b>${esc(nameOf(from))}</b> 發動浪漫168突襲，但你身上沒有任何強化可偷`, 'sys');
+        setTurn(S.role);
+        renderHexPane();
+      }
+      break;
+
+    case 'romantic168-result':
+      if (fromOpp) {
+        if (msg.stolen && !S.aug[S.role].owned.includes(msg.stolen)) S.aug[S.role].owned.push(msg.stolen);
+        imgFlash?.play(ROMANTIC168_IMG, '領域展開・浪漫168');
+        if (msg.stolen) logLine($('battleLog'), `⚡ 浪漫168突襲成功，偷到了 ${augRef(msg.stolen)}！`, 'sunk');
+        else logLine($('battleLog'), `浪漫168突襲撲空——對方沒有任何強化可偷`, 'sys');
+        sfx(msg.stolen ? 'sunk' : 'miss');
+        setTurn(opposite(S.role));
+        renderHexPane();
+      } else if (S.role === 'spectator') {
+        imgFlash?.play(ROMANTIC168_IMG, '領域展開・浪漫168');
+        logLine($('battleLog'), `<b>${esc(nameOf(opposite(from)))}</b> 對 <b>${esc(nameOf(from))}</b> 發動浪漫168突襲`, 'sys');
+        setTurn(from);
       }
       break;
 
@@ -886,6 +922,14 @@ function useActive(id) {
       sysLog(`艦隊重組完成，${n} 艘船換了位置`);
       sfx('turn');
       setTurn(opposite(S.role));
+      break;
+    }
+    case 'romantic168': {
+      if (!confirm('浪漫168突襲：放棄這回合開火，隨機偷走對手一張強化。確定？')) return;
+      S.aug[S.role].used.romantic168 = true;
+      S.turn = null;
+      net.send({ type: 'romantic168-req' });
+      sysLog('你發動了浪漫168突襲…');
       break;
     }
   }
@@ -1876,6 +1920,7 @@ function init() {
     },
   };
   cutscene = initCutscene();
+  imgFlash = initImageFlash();
   initDevTools({
     getState: () => ({ phase: S.phase, mayhem: S.mayhem, owned: S.aug[S.role]?.owned }),
     onQuickReady() {
@@ -1995,6 +2040,7 @@ function init() {
       // 意外把人送進上班模式（cutscene.js 曾經自己掛一個獨立監聽器，
       // 兩個監聽器都會收到同一次按鍵，於是「跳過過場」變成「跳過過場+跳進 Excel」）。
       if (cutscene?.active) cutscene.close();
+      else if (imgFlash?.active) imgFlash.close();
       else if (augTips?.isOpen()) augTips.hide();
       else if (!help.hidden) closeHelp();
       else if (S.mode && !excel.active && !boss.active) { cancelMode(); render(); }
