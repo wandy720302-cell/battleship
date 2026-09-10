@@ -58,25 +58,34 @@ function paintShip(cells, ship, extraClass = '') {
   });
 }
 
-// 我方海域：自己的船 + 對方打過的每一發。
-export function paintMyBoard(cells, fleet, incoming, lastShot) {
+// 我方海域：自己的船 + 假船 + 對方打過的每一發。
+export function paintMyBoard(cells, fleet, incoming, lastShot, decoy = null) {
   resetCells(cells);
   for (const ship of fleet) {
     if (ship.x != null) paintShip(cells, ship);
+  }
+  if (decoy) {
+    const c = decoy.cells;
+    const dir = c.length > 1 && c[1].x !== c[0].x ? 'h' : 'v';
+    paintShip(cells, { x: c[0].x, y: c[0].y, dir, size: c.length }, 'decoy');
   }
   const occ = occupancy(fleet);
   for (const [k, kind] of incoming) {
     const el = cells.get(k);
     if (!el) continue;
     if (kind === 'miss') { el.className = 'cell miss'; continue; }
+    if (kind === 'armor') { el.classList.add('armor'); continue; }
     const hitShip = occ.get(k)?.ship;
-    const sunk = hitShip && hitShip.hits.length === hitShip.size;
+    const sunk = hitShip
+      ? hitShip.hits.length === hitShip.size
+      : decoy && decoy.hits.length === decoy.cells.length;   // 假船格
     el.classList.add(sunk ? 'sunk' : 'hit');
   }
   if (lastShot) cells.get(lastShot)?.classList.add('last-shot');
 }
 
 // 敵方海域：只有我打出去的結果，船身永遠不顯示（除非終局揭曉）。
+// 額外標記：聲納區域、雷達距離提示、裝甲彈開、情報、假船。
 export function paintEnemyBoard(cells, tracker, lastShot, revealFleet) {
   resetCells(cells);
   if (revealFleet) {
@@ -84,11 +93,15 @@ export function paintEnemyBoard(cells, tracker, lastShot, revealFleet) {
       if (ship.x != null) paintShip(cells, ship);
     }
   }
+  for (const [k, v] of tracker.sonar || []) {
+    cells.get(k)?.classList.add(v === 'yes' ? 'sonar-yes' : 'sonar-no');
+  }
   for (const [k, kind] of tracker.shots) {
     const el = cells.get(k);
     if (!el) continue;
-    el.classList.remove('ship', 'vert', 'edge-start', 'edge-end');
+    if (kind !== 'intel' && kind !== 'armor') el.classList.remove('ship', 'vert', 'edge-start', 'edge-end');
     el.classList.add(kind);
+    if (kind === 'miss' && tracker.near?.has(k)) el.classList.add(tracker.near.get(k) ? 'near' : 'far');
   }
   if (lastShot) cells.get(lastShot)?.classList.add('last-shot');
 }
@@ -133,14 +146,27 @@ export function logLine(el, html, cls = '') {
 
 export function toast(text, kind = '') {
   const stack = $('toastStack');
+  // 同一句話還掛在畫面上就不再疊一個，只把它的倒數重置（連點時最常見）。
+  const dup = [...stack.children].find(c => c.dataset.text === text);
+  if (dup) {
+    dup.classList.remove('out');
+    clearTimeout(+dup.dataset.timer);
+    dup.dataset.timer = setTimeout(() => fadeToast(dup), 2600);
+    return;
+  }
   const el = document.createElement('div');
   el.className = `toast ${kind}`.trim();
   el.textContent = text;
+  el.dataset.text = text;
   stack.appendChild(el);
-  setTimeout(() => {
-    el.classList.add('out');
-    setTimeout(() => el.remove(), 320);
-  }, 2600);
+  // 最多留 3 則，太多會蓋掉棋盤。
+  while (stack.children.length > 3) stack.firstChild.remove();
+  el.dataset.timer = setTimeout(() => fadeToast(el), 2600);
+}
+
+function fadeToast(el) {
+  el.classList.add('out');
+  setTimeout(() => el.remove(), 320);
 }
 
 const SCREENS = ['screenLobby', 'screenSetup', 'screenBattle'];

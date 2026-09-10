@@ -93,6 +93,11 @@
           <input type="checkbox" id="chkHitAgain">
           <span>命中後可以再開一槍</span>
         </label>
+        <label class="check">
+          <input type="checkbox" id="chkMayhem">
+          <span>⚡ 海克斯大亂鬥</span>
+        </label>
+        <p class="rules-note mayhem-note" id="mayhemNote" hidden>第一回合與每開 6 槍，從 3 個隨機強化裡選 1 個。聲納、十字爆破、幽靈艦隊、同歸於盡…共 12 種。</p>
         <p class="rules-note" id="rulesNote">由房主決定規則。</p>
       </div>
 
@@ -105,6 +110,10 @@
 <!-- ── 對戰 ─────────────────────────────────────────── -->
 <main class="screen battle" id="screenBattle" hidden>
   <div class="turn-banner" id="turnBanner"><span id="turnText">準備開戰</span></div>
+  <div class="mode-bar" id="modeBar" hidden>
+    <span id="modeText"></span>
+    <button class="btn btn-ghost btn-sm" id="btnCancelMode" type="button">取消（Esc）</button>
+  </div>
 
   <div class="stage stage-battle">
     <section class="panel board-panel">
@@ -132,8 +141,10 @@
       <div class="log-head">
         <button class="tab active" id="tabLog" data-tab="log">戰報</button>
         <button class="tab" id="tabChat" data-tab="chat">聊天</button>
+        <button class="tab" id="tabHex" data-tab="hex" hidden>⚡ 海克斯</button>
       </div>
       <ul class="log" id="battleLog"></ul>
+      <div class="hex-pane" id="hexPane" hidden></div>
       <div class="chat-pane" id="chatPane" hidden>
         <ul class="log chat-log" id="chatLog"></ul>
         <form class="chat-form" id="chatForm">
@@ -159,6 +170,15 @@
   </div>
 </div>
 
+<!-- ── 海克斯強化選擇 ───────────────────────────────── -->
+<div class="pick" id="pickModal" hidden>
+  <div class="pick-card-wrap">
+    <h2>⚡ 選擇一個海克斯強化</h2>
+    <p class="pick-sub">三選一，選了就是你的。對手看得到你選了什麼。</p>
+    <div class="pick-cards" id="pickCards"></div>
+  </div>
+</div>
+
 <!-- ── 使用教學 ─────────────────────────────────────── -->
 <div class="help" id="helpModal" hidden>
   <div class="help-card" role="dialog" aria-labelledby="helpTitle">
@@ -172,6 +192,7 @@
         <button data-sec="setup">擺船</button>
         <button data-sec="battle">對戰</button>
         <button data-sec="social">聊天與觀戰</button>
+        <button data-sec="mayhem">⚡ 海克斯大亂鬥</button>
         <button data-sec="excel">上班模式 · Excel</button>
         <button data-sec="vscode">上班模式 · VSCode</button>
         <button data-sec="trouble">疑難排解</button>
@@ -221,6 +242,36 @@
             <li>想看戲的人用同一個邀請連結，勾「以觀戰身分進入」，可以看兩邊海域和聊天，不能出手</li>
             <li>一間房只有兩位玩家，第三個人進來會被要求改觀戰</li>
           </ul>
+        </section>
+
+        <section data-sec="mayhem" hidden>
+          <h3>⚡ 海克斯大亂鬥</h3>
+          <p>房主在擺船階段勾選。<b>第一回合</b>以及<b>每開 6 槍</b>，輪到你時會跳出 3 個隨機強化，選 1 個。選了什麼對手看得到。主動技能在右側 <b>⚡ 海克斯</b> 分頁按「使用」。</p>
+          <h4>偵察與情報</h4>
+          <table class="help-keys">
+            <tr><td>海克斯聲納 <i>銀·主動</i></td><td>消耗一回合，點一格掃描周圍 3×3，只回「有」或「沒有」船。每局一次</td></tr>
+            <tr><td>內線情報 <i>銀·即時</i></td><td>取得時立刻揭露敵方一格有船（棋盤上標 ❗）</td></tr>
+            <tr><td>深海雷達 <i>金·被動</i></td><td>每次落空都提示：最近的敵船在 1 格內（含斜角）還是 2 格以上</td></tr>
+          </table>
+          <h4>猛烈火力</h4>
+          <table class="help-keys">
+            <tr><td>乘勝追擊 <i>金·被動</i></td><td>擊中就再開一槍，連鎖到落空為止</td></tr>
+            <tr><td>十字爆破 <i>金·主動</i></td><td>同時打目標格與上下左右共 5 格。每局一次</td></tr>
+            <tr><td>機率補償 <i>銀·被動</i></td><td>連續 4 次落空後，下一發加送 2 枚隨機飛彈</td></tr>
+          </table>
+          <h4>戰術防禦</h4>
+          <table class="help-keys">
+            <tr><td>幽靈艦隊 <i>金·即時</i></td><td>隨機佈一艘 3 格假船（你看到虛線）。對手擊沉它 → 回合立刻結束，你多 1 發</td></tr>
+            <tr><td>緊急躍遷 <i>金·主動</i></td><td>消耗一回合，把一艘完全未受損的船移到合法空位。不能放在被打過的格子</td></tr>
+            <tr><td>反應裝甲 <i>金·即時</i></td><td>航母每格要被打兩次。第一次對手看到 🛡 裝甲彈開</td></tr>
+          </table>
+          <h4>稜鏡級</h4>
+          <table class="help-keys">
+            <tr><td>背水一戰 <i>稜鏡·被動</i></td><td>只剩最後一艘船時，每回合連開 2 槍</td></tr>
+            <tr><td>同歸於盡 <i>稜鏡·被動</i></td><td>你的船被擊沉時，對敵方隨機一格有船位置造成 1 次必定命中</td></tr>
+            <tr><td>艦隊重組 <i>稜鏡·主動</i></td><td>消耗一回合，所有未受損的船隨機換位。每局一次</td></tr>
+          </table>
+          <p class="help-tip">Excel 模式也能玩：強化選單會用 Excel 對話框跳出來，主動技能對應 <kbd>F2</kbd> <kbd>F3</kbd> <kbd>F4</kbd>（照你擁有的順序），然後用游標選目標、Enter 確認。</p>
         </section>
 
         <section data-sec="excel" hidden>

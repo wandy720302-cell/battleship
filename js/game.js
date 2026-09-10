@@ -89,8 +89,10 @@ export const remainingShips = fleet =>
   fleet.filter(s => s.hits.length < s.size).length;
 
 // 追蹤敵方棋盤：只記錄我打過的格子與結果。
+// shots 的值：'miss' | 'hit' | 'sunk' | 'armor'(裝甲彈開) | 'intel'(情報：有船) | 'decoy'(假船)
+// near：深海雷達的落空提示；sonar：聲納掃過的 3×3 區域 'yes' | 'no'
 export function newTracker() {
-  return { shots: new Map(), sunkShips: [] };
+  return { shots: new Map(), sunkShips: [], near: new Map(), sonar: new Map() };
 }
 
 export function recordShot(tracker, res) {

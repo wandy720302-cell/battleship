@@ -416,6 +416,151 @@ input::placeholder { color: var(--text-mute); }
   z-index: 2;
 }
 
+/* 大亂鬥標記 */
+.cell.ship.decoy {
+  background: repeating-linear-gradient(135deg, #2a4a63 0 5px, #1c3448 5px 10px);
+  border-style: dashed;
+  border-color: #7ea7c7;
+}
+.cell.armor::before {
+  content: "\1F6E1";
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  font-size: clamp(10px, 1.8vw, 15px);
+  filter: drop-shadow(0 0 4px rgba(52,226,208,.6));
+}
+.cell.intel {
+  background: rgba(242,193,78,.22);
+  border-color: var(--gold);
+}
+.cell.intel::before {
+  content: "!";
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  color: var(--gold); font-weight: 900;
+  font-size: clamp(12px, 2.2vw, 18px);
+}
+.cell.decoy:not(.ship) {
+  background: repeating-linear-gradient(135deg, #3b3b3b 0 5px, #2a2a2a 5px 10px);
+  border-color: #666;
+}
+.cell.decoy:not(.ship)::before {
+  content: "\1F47B";
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  font-size: clamp(10px, 1.8vw, 15px);
+  opacity: .8;
+}
+.cell.miss.near::after {
+  content: "";
+  position: absolute; inset: 3px;
+  border: 2px solid var(--hit);
+  border-radius: 3px;
+  opacity: .7;
+}
+.cell.miss.far::after {
+  content: "";
+  position: absolute; inset: 3px;
+  border: 1px dashed rgba(64,90,117,.7);
+  border-radius: 3px;
+}
+.cell.sonar-yes { box-shadow: inset 0 0 0 2px rgba(255,112,67,.45); }
+.cell.sonar-no  { box-shadow: inset 0 0 0 2px rgba(64,90,117,.5); opacity: .75; }
+.board-enemy.mode-sonar.live .cell:hover, .board-enemy.mode-cross.live .cell:hover {
+  background: rgba(242,193,78,.3);
+  border-color: var(--gold);
+}
+.board-mine.live .cell:not(.ship) { cursor: crosshair; }
+/* 躍遷選船：能動的發光，受損的直接看得出來不能點 */
+.board-mine.live .cell.ship { cursor: not-allowed; filter: grayscale(.5) brightness(.7); }
+.board-mine.live .cell.ship.blink-ok {
+  cursor: pointer;
+  filter: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 0 12px rgba(52,226,208,.5);
+  z-index: 2;
+}
+.board-mine.live .cell.ship.blink-ok:hover { filter: brightness(1.3); }
+
+.mode-bar {
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  max-width: 1500px;
+  margin: 10px auto 0;
+  padding: 9px 16px;
+  border-radius: var(--radius);
+  background: rgba(242,193,78,.1);
+  border: 1px solid rgba(242,193,78,.45);
+  color: var(--gold);
+  font-size: .9rem;
+  animation: slide-in .2s ease-out;
+}
+
+/* 海克斯分頁 */
+.hex-pane { flex: 1; overflow-y: auto; font-size: .85rem; scrollbar-width: thin; }
+.hex-sec + .hex-sec { margin-top: 14px; }
+.hex-sec h4 {
+  font-size: .78rem; color: var(--text-dim); letter-spacing: .06em;
+  margin-bottom: 8px; display: flex; justify-content: space-between; align-items: baseline;
+}
+.hex-next { font-weight: 400; color: var(--text-mute); font-size: .74rem; }
+.hex-empty { color: var(--text-mute); margin: 0; font-size: .82rem; }
+.hex-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.hex-card {
+  padding: 8px 11px;
+  border-radius: var(--radius-sm);
+  background: rgba(6,13,22,.55);
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+}
+.hex-card.used { opacity: .5; }
+.hex-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+.hex-card-head b { color: var(--text); }
+.hex-card p { margin: 0; color: var(--text-dim); font-size: .8rem; line-height: 1.5; }
+.hex-card .btn { margin-top: 7px; }
+.hex-tier {
+  font-size: .7rem; padding: 1px 6px; border-radius: 999px;
+  border: 1px solid currentColor; letter-spacing: .05em;
+}
+.hex-kind { margin-left: auto; font-size: .72rem; color: var(--text-mute); }
+.tier-silver { border-left-color: #a9b8c7; } .tier-silver .hex-tier { color: #b9c7d4; }
+.tier-gold   { border-left-color: var(--gold); } .tier-gold .hex-tier { color: var(--gold); }
+.tier-prism  { border-left-color: #c58cff; }   .tier-prism .hex-tier { color: #d4a8ff; }
+
+/* 三選一 */
+.pick {
+  position: fixed; inset: 0; z-index: 82;
+  display: grid; place-items: center;
+  background: rgba(3,8,17,.82);
+  backdrop-filter: blur(8px);
+  padding: 20px;
+  animation: fade-in .25s ease-out;
+}
+.pick-card-wrap { width: min(920px, 100%); text-align: center; }
+.pick-card-wrap h2 { font-size: 1.4rem; letter-spacing: .06em; }
+.pick-sub { color: var(--text-dim); margin: 6px 0 22px; font-size: .9rem; }
+.pick-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.pick-card {
+  font: inherit; text-align: left; cursor: pointer;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 18px 18px 20px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(17,35,58,.96), rgba(10,20,33,.96));
+  border: 1px solid var(--line);
+  border-top-width: 4px;
+  color: var(--text);
+  transition: transform .15s, border-color .15s, box-shadow .15s;
+}
+.pick-card:hover { transform: translateY(-4px); border-color: var(--accent); box-shadow: 0 14px 36px rgba(0,0,0,.5); }
+.pick-card.tier-silver { border-top-color: #a9b8c7; }
+.pick-card.tier-gold   { border-top-color: var(--gold); }
+.pick-card.tier-prism  { border-top-color: #c58cff; box-shadow: 0 0 24px rgba(197,140,255,.18); }
+.pick-card b { font-size: 1.12rem; }
+.pick-card .hex-tier { align-self: flex-start; }
+.pick-kind { font-size: .74rem; color: var(--text-mute); }
+.pick-card p { margin: 4px 0 0; color: var(--text-dim); font-size: .86rem; line-height: 1.55; }
+@media (max-width: 760px) { .pick-cards { grid-template-columns: 1fr; } }
+.mayhem-note { color: var(--gold) !important; }
+
 /* 擺放預覽 */
 .cell.preview-ok  { background: rgba(52, 226, 208, .3); border-color: var(--accent); }
 .cell.preview-bad { background: rgba(229, 72, 77, .28); border-color: var(--danger); }
@@ -1185,6 +1330,69 @@ input::placeholder { color: var(--text-mute); }
 .xl-hit { color: #c00000; }
 .xl-sunk { background: #ffc7ce !important; color: #9c0006; font-weight: 700; }
 .xl-ship { background: #ddebf7 !important; }
+/* Excel 模式的大亂鬥標記：全部用 Excel 本來就有的長相 */
+.xl-armor { position: relative; }
+.xl-armor::after {          /* 儲存格註解的紅色角標 */
+  content: "";
+  position: absolute; top: 0; right: 0;
+  border: 4px solid transparent;
+  border-top-color: #c00000;
+  border-right-color: #c00000;
+}
+.xl-intel { background: #fff2cc !important; box-shadow: inset 0 0 0 1px #bf9000; }
+.xl-decoy { background: #e2e2e2 !important; color: #7a7a7a; font-style: italic; }
+.xl-decoy-mine {
+  background: repeating-linear-gradient(135deg, #f2f2f2 0 4px, #e4e4e4 4px 8px) !important;
+  color: #999;
+  outline: 1px dashed #aaa; outline-offset: -1px;
+}
+.xl-sonar-yes { box-shadow: inset 0 0 0 2px #ed7d31; }
+.xl-sonar-no  { box-shadow: inset 0 0 0 2px #b4c7dc; }
+
+/* Ribbon 裡的主動技能按鈕 */
+.xl-aug { flex-direction: column; align-items: stretch; gap: 3px; justify-content: center; min-width: 140px; }
+.xl-aug-btn {
+  display: block;
+  border: 1px solid #c8c8c8;
+  background: #fff;
+  padding: 2px 8px;
+  font-size: 11.5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.xl-aug-btn b { color: #185c37; margin-right: 5px; }
+.xl-aug-btn:hover { background: #d5e5f5; border-color: #0078d4; }
+.xl-aug-btn.on { background: #d2ead9; border-color: #107c41; box-shadow: inset 0 0 0 1px #107c41; }
+.xl-aug-btn.used { opacity: .45; text-decoration: line-through; cursor: default; }
+.xl-aug-btn.used:hover { background: #fff; border-color: #c8c8c8; }
+
+/* 三選一：假的資料驗證對話框 */
+.xl-pick-box { width: 520px; }
+.xl-pick-body { padding: 14px 16px; }
+.xl-pick-label { font-size: 12px; margin-bottom: 5px; }
+.xl-pick-list { border: 1px solid #7a7a7a; background: #fff; }
+.xl-pick-row {
+  display: grid;
+  grid-template-columns: 34px 108px 1fr;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-bottom: 1px solid #eee;
+}
+.xl-pick-row:last-child { border-bottom: none; }
+.xl-pick-row:hover { background: #f0f6fc; }
+.xl-pick-row.sel { background: #0078d4; color: #fff; }
+.xl-pick-row.sel .xl-pick-desc, .xl-pick-row.sel .xl-pick-tier { color: #dbeaf7; border-color: #dbeaf7; }
+.xl-pick-tier {
+  font-size: 10px; text-align: center;
+  border: 1px solid #999; border-radius: 2px;
+  padding: 0 3px; color: #666;
+}
+.xl-pick-name { font-weight: 600; font-size: 12.5px; }
+.xl-pick-desc { font-size: 11.5px; color: #666; line-height: 1.45; }
+.xl-pick-hint { font-size: 11px; color: #888; margin-top: 8px; }
+
 /* 擺船預覽：像 Excel 選取範圍的虛線框 */
 .xl-preview     { background: #e8f1fb !important; outline: 2px dashed #5b9bd5; outline-offset: -2px; }
 .xl-preview-bad { background: #fde0e0 !important; outline: 2px dashed #c00000; outline-offset: -2px; }
