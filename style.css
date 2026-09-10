@@ -1745,7 +1745,7 @@ input::placeholder { color: var(--text-mute); }
   line-height: 1.9;
   text-align: center;
   text-shadow: 0 2px 10px rgba(0,0,0,.85);
-  animation: hp-crawl 22s linear forwards;
+  animation: hp-crawl 5s linear forwards;  /* JS 開播時會覆寫成 CRAWL_MS，這裡只是初始畫面不留白 */
 }
 .cutscene-crawl p { margin: 0 0 1.4em; }
 @keyframes hp-crawl {

@@ -13,7 +13,7 @@ const TEXT = [
   '虎杖呆呆的看著屏幕仍不可置信，「也就是說……」，「沒錯，是五條悟贏了！」',
 ].map(p => `<p>${p}</p>`).join('');
 
-const CRAWL_MS = 22000;   // 捲動文字跑完一輪要多久（可以按 Esc / 點擊隨時跳過）
+const CRAWL_MS = 5000;    // 跟影片一樣長（5 秒）；可以按 Esc / 點擊隨時跳過
 
 export function initCutscene() {
   const root = document.createElement('div');
@@ -55,9 +55,11 @@ export function initCutscene() {
     // 這一刻通常緊接著使用者剛才的點擊（攻方）或本頁面稍早已有過互動（守方），
     // 瀏覽器的自動播放限制通常都會放行；真的被擋也不影響文字捲動照跑。
     video.play().catch(() => {});
+    // CRAWL_MS 是唯一真相來源：直接把秒數寫進 shorthand，不靠 CSS 裡的預設值，
+    // 兩處數字不會再有機會兜不起來。
     crawl.style.animation = 'none';
     void crawl.offsetWidth;
-    crawl.style.animation = '';
+    crawl.style.animation = `hp-crawl ${CRAWL_MS}ms linear forwards`;
     closeTimer = setTimeout(close, CRAWL_MS);
   }
 
