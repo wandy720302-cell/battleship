@@ -5,7 +5,8 @@ import {
   cellsOf, SHIP_TYPES, fleetSpec, deployCount, nonGhostAllSunk, ghostOf,
 } from './game.js';
 import {
-  AUG, AUGMENTS, TIER_NAME, PICK_EVERY, rollOffers, crossCells, squareCells,
+  AUG, AUGMENTS, TIER_NAME, PICK_EVERY, rollOffers, crossCells, squareCells, rowCells,
+  hollowPurpleEligible,
   advanceTurn as hexAdvanceTurn,
   nearShip, sonarPresent, randomDecoy, randomShipCell, isUndamaged,
   relocateUndamaged, decoyAsShip, resolveCell,
@@ -14,6 +15,7 @@ import { createNet, makeRoomCode } from './net.js';
 import { sfx, setSoundEnabled, isSoundEnabled, unlockAudio } from './audio.js';
 import { initBossMode } from './boss.js';
 import { initExcelMode } from './excel.js';
+import { initCutscene } from './cutscene.js';
 import {
   $, buildBoard, paintMyBoard, paintEnemyBoard, renderDock,
   logLine, toast, banner, setScreen, esc, cellName,
@@ -92,6 +94,7 @@ let net = null;
 let boards = { setup: null, enemy: null, mine: null };
 let boss = null;   // 假 VSCode（純遮羞布）
 let excel = null;  // 假 Excel（可以在裡面打）
+let cutscene = null;  // 虛式「茈」發動時的過場
 let augTips = null;
 
 // ── 網路事件 ─────────────────────────────────────────
@@ -712,6 +715,7 @@ function checkPick() {
   if (!S.myFleet.some(isUndamaged)) exclude.push('blink', 'rebuild');
   const carrier = S.myFleet.find(s => s.id === 'carrier');
   if (!carrier || carrier.hits.length >= carrier.size) exclude.push('armor');
+  if (!hollowPurpleEligible(remainingShips(S.myFleet))) exclude.push('hollowpurple');
   const offers = rollOffers(S.aug[me].owned, exclude);
   if (!offers.length) return;
   S.pending = offers;
@@ -745,6 +749,7 @@ function useActive(id) {
   switch (id) {
     case 'sonar':
     case 'cross':
+    case 'hollowpurple':
       S.mode = id;
       break;
     case 'blink':
@@ -823,6 +828,14 @@ function fire(x, y) {
     S.mode = null;
     return fireCells(cells, 'cross');
   }
+  if (S.mode === 'hollowpurple') {
+    const cells = rowCells(x, y).filter(c => canTarget(S.enemy, key(c.x, c.y)));
+    if (!cells.length) return toast('這條線全都打過了，換一列', 'bad');
+    S.aug[S.role].used.hollowpurple = true;
+    S.mode = null;
+    cutscene?.play();           // 攻方自己也要看到——這是本局最戲劇性的一擊
+    return fireCells(cells, 'hollowpurple');
+  }
   if (S.mode) return;
   const k = key(x, y);
   if (!canTarget(S.enemy, k)) return;
@@ -850,6 +863,7 @@ function fireCells(cells, kind) {
   net.send({ type: 'fire', cells, kind, seq: S.seq });
   if (kind === 'cross') logLine($('battleLog'), '💣 十字爆破！', 'sys');
   if (kind === 'carpet') logLine($('battleLog'), '🎰 機率補償：地毯式轟炸 3 格', 'sys');
+  if (kind === 'hollowpurple') logLine($('battleLog'), '⚡ 你發動了虛式「茈」！', 'sunk');
   sfx('fire');
   render();
 }
@@ -882,6 +896,10 @@ function handleIncomingFire(msg) {
   const who = `<b>${esc(nameOf(shooter))}</b>`;
   if (msg.kind === 'cross') logLine($('battleLog'), `${who} 發射十字爆破！`, 'sys');
   if (msg.kind === 'carpet') logLine($('battleLog'), `${who} 地毯式轟炸！`, 'sys');
+  if (msg.kind === 'hollowpurple') {
+    logLine($('battleLog'), `${who} 發動了 ⚡ 虛式「茈」！`, 'sunk');
+    cutscene?.play();
+  }
   let loudest = 'miss';
   for (const r of results) {
     const at = cellName(r.x, r.y);
@@ -1166,6 +1184,7 @@ function specResult(msg) {
   const agg = { hit: results.some(r => r.hit), decoySunk: results.some(r => r.sunk?.decoy) };
   setTurn(msg.dead ? null : advanceTurn(shooter, agg));
   const who = `<b>${esc(nameOf(shooter))}</b>`;
+  if (msg.kind === 'hollowpurple') cutscene?.play();
   let loudest = 'miss';
   for (const r of results) {
     const at = cellName(r.x, r.y);
@@ -1422,10 +1441,12 @@ function render() {
       banner.classList.add('theirs');
       $('turnText').textContent = '砲彈飛行中…';
     }
-    const live = isMyTurn() && !S.pending && (S.mode === null || S.mode === 'sonar' || S.mode === 'cross');
+    const live = isMyTurn() && !S.pending &&
+      (S.mode === null || S.mode === 'sonar' || S.mode === 'cross' || S.mode === 'hollowpurple');
     $('enemyBoard').classList.toggle('live', live);
     $('enemyBoard').classList.toggle('mode-sonar', S.mode === 'sonar');
     $('enemyBoard').classList.toggle('mode-cross', S.mode === 'cross');
+    $('enemyBoard').classList.toggle('mode-hollowpurple', S.mode === 'hollowpurple');
     $('enemyLock').hidden = isMyTurn() || S.phase === 'over';
     $('enemyLock').querySelector('span').textContent =
       S.ghostPhase === 'placing' ? '👻 先讓幽靈船就位'
@@ -1478,6 +1499,7 @@ function renderModeBar() {
   const text = {
     'sonar': '🔊 聲納：點敵方海域一格，掃描它周圍 3×3（消耗回合）',
     'cross': '💣 十字爆破：點敵方海域一格，同時打上下左右 5 格',
+    'hollowpurple': '⚡ 虛式「茈」：點敵方海域一格，整條橫線 5 格全部開火',
     'blink': '🌀 緊急躍遷：點我方海域一艘「完全未受損」的船',
     'blink-place': '🌀 躍遷：點目標位置放下，R 旋轉（不能放在被打過的格子）',
   }[S.mode];
@@ -1642,6 +1664,7 @@ function init() {
       if (soundBeforeWork) unlockAudio();
     },
   };
+  cutscene = initCutscene();
   boss = initBossMode(workHooks);
   excel = initExcelMode({
     ...workHooks,
@@ -1732,7 +1755,12 @@ function init() {
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       e.preventDefault();
-      if (augTips?.isOpen()) augTips.hide();
+      // 過場動畫是全螢幕蓋在最上面的東西，優先權要排第一——
+      // 不然按 Esc 跳過它的同一個按鍵事件會落到下面的分支，
+      // 意外把人送進上班模式（cutscene.js 曾經自己掛一個獨立監聽器，
+      // 兩個監聽器都會收到同一次按鍵，於是「跳過過場」變成「跳過過場+跳進 Excel」）。
+      if (cutscene?.active) cutscene.close();
+      else if (augTips?.isOpen()) augTips.hide();
       else if (!help.hidden) closeHelp();
       else if (S.mode && !excel.active && !boss.active) { cancelMode(); render(); }
       else if (boss.active) boss.exit();

@@ -509,7 +509,8 @@ input::placeholder { color: var(--text-mute); }
 }
 .cell.sonar-yes { box-shadow: inset 0 0 0 2px rgba(255,112,67,.45); }
 .cell.sonar-no  { box-shadow: inset 0 0 0 2px rgba(64,90,117,.5); opacity: .75; }
-.board-enemy.mode-sonar.live .cell:hover, .board-enemy.mode-cross.live .cell:hover {
+.board-enemy.mode-sonar.live .cell:hover, .board-enemy.mode-cross.live .cell:hover,
+.board-enemy.mode-hollowpurple.live .cell:hover {
   background: rgba(242,193,78,.3);
   border-color: var(--gold);
 }
@@ -1678,6 +1679,120 @@ input::placeholder { color: var(--text-mute); }
 @media (max-width: 760px) {
   .xl-ribbon { display: none; }
   .xl-sheet th, .xl-sheet td { width: 46px; font-size: 11px; }
+}
+
+/* ── 虛式「茈」過場 ──────────────────────────────── */
+#cutscene {
+  position: fixed;
+  inset: 0;
+  z-index: 600;   /* 蓋過上班模式、教學、三選一——這是全場最戲劇性的一刻 */
+  background: #000;
+  animation: cutscene-in .35s ease-out;
+}
+#cutscene.out { animation: cutscene-out .28s ease-in forwards; }
+@keyframes cutscene-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cutscene-out { to { opacity: 0; } }
+
+.cutscene-stage { position: relative; width: 100%; height: 100%; overflow: hidden; }
+
+.cutscene-video {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  filter: saturate(1.15) contrast(1.05);
+}
+.cutscene-vignette {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 30%, transparent 0%, rgba(5,0,15,.55) 75%, rgba(2,0,8,.92) 100%),
+    linear-gradient(180deg, rgba(2,0,8,.35) 0%, transparent 22%, transparent 60%, rgba(2,0,8,.88) 100%);
+}
+
+.cutscene-title {
+  position: absolute;
+  top: 8%; left: 50%;
+  transform: translateX(-50%);
+  font-size: clamp(1.8rem, 5vw, 3.2rem);
+  font-weight: 800;
+  letter-spacing: .12em;
+  color: #e6ccff;
+  text-shadow: 0 0 24px rgba(197,140,255,.85), 0 0 60px rgba(140,80,255,.5);
+  animation: hp-title-in .8s cubic-bezier(.2,.9,.3,1.2) .15s backwards;
+}
+@keyframes hp-title-in {
+  from { opacity: 0; letter-spacing: .4em; transform: translateX(-50%) scale(.85); }
+  to   { opacity: 1; transform: translateX(-50%) scale(1); }
+}
+
+.cutscene-crawl-mask {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: min(720px, 88vw);
+  height: 62%;
+  transform: translateX(-50%);
+  overflow: hidden;
+  mask-image: linear-gradient(180deg, transparent 0%, #000 14%, #000 86%, transparent 100%);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 14%, #000 86%, transparent 100%);
+}
+.cutscene-crawl {
+  position: absolute;
+  left: 0; right: 0;
+  top: 100%;
+  color: #f1e6ff;
+  font-size: clamp(.86rem, 1.6vw, 1.05rem);
+  line-height: 1.9;
+  text-align: center;
+  text-shadow: 0 2px 10px rgba(0,0,0,.85);
+  animation: hp-crawl 22s linear forwards;
+}
+.cutscene-crawl p { margin: 0 0 1.4em; }
+@keyframes hp-crawl {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-135%); }
+}
+
+.cutscene-skip {
+  position: absolute;
+  right: 18px; bottom: 16px;
+  font: inherit;
+  font-size: .82rem;
+  display: flex; align-items: center; gap: 7px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(230,204,255,.4);
+  background: rgba(20,8,34,.55);
+  color: #e6ccff;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition: background .15s, border-color .15s;
+}
+.cutscene-skip:hover { background: rgba(197,140,255,.25); border-color: #c58cff; }
+.cutscene-skip kbd {
+  font-family: inherit;
+  background: rgba(230,204,255,.16);
+  border: 1px solid rgba(230,204,255,.4);
+  border-radius: 4px;
+  padding: 0 5px;
+}
+
+@media (max-width: 640px) {
+  .cutscene-crawl-mask { width: 92vw; height: 58%; }
+  .cutscene-title { top: 6%; }
+}
+
+/* 偏好減少動態：不要硬讓文字消失又靜止，改成可捲動的靜態字幕框 */
+@media (prefers-reduced-motion: reduce) {
+  .cutscene-crawl { animation: none !important; position: static; }
+  .cutscene-crawl-mask {
+    top: 20%; bottom: 16%; height: auto;
+    overflow-y: auto;
+    mask-image: none; -webkit-mask-image: none;
+    padding: 14px 18px;
+    background: rgba(10,4,20,.5);
+    border-radius: 12px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

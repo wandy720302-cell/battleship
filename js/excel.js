@@ -1,7 +1,7 @@
 // 可玩的上班模式：假 Excel。棋盤就是試算表上的兩塊範圍，
 // 命中 = 紅字負數、落空 = 會計格式的「-」、擊沉 = 淺紅填滿深紅字（Excel 內建條件格式）。
 import { SIZE, key, occupancy, canPlace, cellsOf } from './game.js';
-import { AUG, TIER_NAME, crossCells } from './hex.js';
+import { AUG, TIER_NAME, crossCells, rowCells } from './hex.js';
 
 const COLS = 24;   // A–X；1366 寬的筆電也要一次看到兩塊棋盤
 const ROWS = 32;
@@ -332,6 +332,7 @@ export function initExcelMode(hooks) {
       if (s.phase === 'setup' && !s.readyMe) paintPreview(s);
       if (s.mode === 'blink-place' || s.ghostPhase === 'placing') paintPreview(s);
       if (s.mode === 'cross') paintCross();
+      if (s.mode === 'hollowpurple') paintRow();
     }
     paintSelection();
     renderPick(s);
@@ -373,6 +374,14 @@ export function initExcelMode(hooks) {
   // 十字爆破預覽：目標格 + 上下左右。
   function paintCross() {
     for (const c of crossCells(sel.x, sel.y)) {
+      const { r, c: col } = toSheet('left', c.x, c.y);
+      cellAt(r, col)?.classList.add('xl-preview');
+    }
+  }
+
+  // 虛式「茈」預覽：整條橫線 5 格。
+  function paintRow() {
+    for (const c of rowCells(sel.x, sel.y)) {
       const { r, c: col } = toSheet('left', c.x, c.y);
       cellAt(r, col)?.classList.add('xl-preview');
     }

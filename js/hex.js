@@ -29,7 +29,13 @@ export const AUGMENTS = [
     desc: '你的船被擊沉的瞬間自爆反擊：對敵方隨機一格「有船」的位置造成 1 次必定命中。' },
   { id: 'rebuild',   name: '艦隊重組',   tier: 'prism',  cat: '稜鏡', kind: 'active', once: true,
     desc: '消耗一回合，所有完全未受損的船隨機換位，對手之前的情報全部作廢。每局一次。' },
+  { id: 'hollowpurple', name: '虛式「茈」', tier: 'prism', cat: '稜鏡', kind: 'active', once: true,
+    condition: 'lowHp',
+    desc: '只有在你只剩最後 2 艘船時才可能刷到。消耗一回合，選一格，整條橫線 5 格全部開火。發動時雙方畫面都會播放專屬動畫。每局一次。' },
 ];
+
+// 虛式「茈」的出場條件：只剩最後 2 艘船才有機率被抽到（機率仍照階級權重，不保證抽到）。
+export const hollowPurpleEligible = remaining => remaining === 2;
 
 export const AUG = Object.fromEntries(AUGMENTS.map(a => [a.id, a]));
 export const TIER_NAME = { silver: '銀', gold: '金', prism: '稜鏡' };
@@ -89,6 +95,13 @@ export function advanceTurn(shooter, agg, st) {
   }
   return next;
 }
+
+// 虛式「茈」：整條橫線固定 5 格（棋盤寬 10，永遠取得到）。
+// 以點擊格為中心取 5 格，貼著邊界時往內縮，不會裁短。
+export const rowCells = (x, y) => {
+  const start = Math.min(Math.max(x - 2, 0), SIZE - 5);
+  return Array.from({ length: 5 }, (_, i) => ({ x: start + i, y }));
+};
 
 export const crossCells = (x, y) =>
   [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]
