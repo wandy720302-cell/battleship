@@ -96,10 +96,24 @@ export function createNet({ onMessage, onStatus, onPeersChanged }) {
     return entry;
   }
 
+  // 手機用行動網路時常常躲在電信級 NAT（CGNAT）後面，光靠 STUN 打洞打不穿，
+  // 這時候唯一能連上的辦法是找一台 TURN 伺服器幫忙轉發封包。
+  // 這組是 Open Relay Project 公開提供的免費測試帳號（metered.ca），沒有金鑰外洩疑慮。
+  const ICE_CONFIG = {
+    iceServers: [
+      { urls: 'stun:stun.relay.metered.ca:80' },
+      { urls: 'turn:global.relay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:global.relay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+    ],
+  };
+
   async function makePeer(id) {
     await loadPeerJS();
     return new Promise((resolve, reject) => {
-      const peer = id ? new window.Peer(id) : new window.Peer();
+      const opts = { config: ICE_CONFIG };
+      const peer = id ? new window.Peer(id, opts) : new window.Peer(opts);
       const fail = err => reject(err);
       peer.once('open', () => { peer.off('error', fail); resolve(peer); });
       peer.once('error', fail);
