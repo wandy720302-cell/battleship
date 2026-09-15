@@ -20,7 +20,7 @@ export function initDevTools(hooks) {
 
       <div class="dev-sec">把我的剩餘艦艇數設為</div>
       <div class="dev-row dev-sink">
-        <button class="dev-btn" data-sink="2">2 艘（虛式「茈」條件）</button>
+        <button class="dev-btn" data-sink="2">2 艘</button>
         <button class="dev-btn" data-sink="1">1 艘（背水一戰條件）</button>
       </div>
 

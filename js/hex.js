@@ -30,8 +30,7 @@ export const AUGMENTS = [
   { id: 'rebuild',   name: '艦隊重組',   tier: 'prism',  cat: '稜鏡', kind: 'active', once: true,
     desc: '消耗一回合，所有完全未受損的船隨機換位，對手之前的情報全部作廢。每局一次。' },
   { id: 'hollowpurple', name: '虛式「茈」', tier: 'prism', cat: '稜鏡', kind: 'active', once: true,
-    condition: 'lowHp',
-    desc: '只有在你只剩最後 2 艘船時才可能刷到。消耗一回合，選一格，以該列為中心的 4 列、整整 40 格全部開火。發動時雙方畫面都會播放專屬動畫。每局一次。' },
+    desc: '消耗一回合，選一格，以該列為中心的 4 列、整整 40 格全部開火。發動時雙方畫面都會播放專屬動畫。每局一次。' },
 
   // ── 第二批（新增，不取代上面任何一張）──
   // 「乘勝追擊」「背水一戰」跟舊卡同名但機制不同（舊版無限連鎖／沒有自癒），
@@ -61,11 +60,8 @@ export const AUGMENTS = [
   { id: 'romantic168', name: '浪漫168突襲', tier: 'prism', cat: '稜鏡', kind: 'active', once: true,
     desc: '放棄本回合開火，直接隨機偷走對手一張已擁有的強化（變成你的）。發動時雙方畫面會跳出專屬圖片。每局一次。' },
   { id: 'kagura', name: '火之神神樂', tier: 'prism', cat: '稜鏡', kind: 'active', once: true,
-    desc: '只有你只剩最後 2 艘船時才可能被抽到。消耗回合，選一格為圓心，半徑 5 格的正圓範圍全部開火。發動時雙方畫面播放專屬過場動畫與背景音樂。每局一次。' },
+    desc: '消耗回合，選一格為圓心，半徑 5 格的正圓範圍全部開火。發動時雙方畫面播放專屬過場動畫與背景音樂。每局一次。' },
 ];
-
-// 虛式「茈」的出場條件：只剩最後 2 艘船才有機率被抽到（機率仍照階級權重，不保證抽到）。
-export const hollowPurpleEligible = remaining => remaining === 2;
 
 export const AUG = Object.fromEntries(AUGMENTS.map(a => [a.id, a]));
 export const TIER_NAME = { silver: '銀', gold: '金', prism: '稜鏡' };

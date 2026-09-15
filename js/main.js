@@ -7,7 +7,6 @@ import {
 } from './game.js';
 import {
   AUG, AUGMENTS, TIER_NAME, PICK_EVERY, rollOffers, crossCells, squareCells, bandCells,
-  hollowPurpleEligible,
   advanceTurn as hexAdvanceTurn,
   nearShip, sonarPresent, randomDecoy, randomShipCell, isUndamaged,
   relocateUndamaged, decoyAsShip, resolveCell,
@@ -998,7 +997,6 @@ function checkPick() {
   if (!S.myFleet.some(isUndamaged)) exclude.push('blink', 'rebuild', 'fleetmaneuver');
   const carrier = S.myFleet.find(s => s.id === 'carrier');
   if (!carrier || carrier.hits.length >= carrier.size) exclude.push('armor', 'dreadnought');
-  if (!hollowPurpleEligible(remainingShips(S.myFleet))) exclude.push('hollowpurple', 'kagura');
   // 幽靈艦隊／誘餌浮標共用同一個假船欄位，同時擁有沒有意義，讓後選的別再擠掉前一張的機會
   if (S.aug[me].owned.includes('ghost')) exclude.push('decoybuoy');
   if (S.aug[me].owned.includes('decoybuoy')) exclude.push('ghost');
@@ -1911,7 +1909,7 @@ function renderModeBar() {
   const text = {
     'sonar': '🔊 聲納：點敵方海域一格，掃描它周圍 3×3（消耗回合）',
     'cross': '💣 十字爆破：點敵方海域一格，同時打上下左右 5 格',
-    'hollowpurple': '⚡ 虛式「茈」：點敵方海域一格，以這列為中心的 4 列（40 格）全部開火',
+    'hollowpurple': '⚡ 虛式「茈」：點敵方海域一格，以這列為中心的 4 列全部開火',
     'kagura': '🔥 火之神神樂：點敵方海域一格為圓心，半徑 5 格的正圓範圍全部開火',
     'blink': '🌀 緊急躍遷：點我方海域一艘「完全未受損」的船',
     'blink-place': '🌀 躍遷：點目標位置放下，R 旋轉（不能放在被打過的格子）',
