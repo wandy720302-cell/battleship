@@ -81,9 +81,12 @@ const S = {
   // ── 幽靈船 ──
   ghostPhase: null,                    // null | 'placing'(我在佈署) | 'waiting'(等對方佈署)
   ghostOut: { host: false, guest: false },  // 誰的幽靈船已經登場
-  // ── 逾時自動開火（防呆，怕有人開著房間發呆）──
-  afkTimer: null,                      // setTimeout id，輪到誰就是誰的計時器
+  // ── 逾時自動開火／選卡（防呆，怕有人開著房間發呆）──
+  afkTimer: null,                      // setTimeout id：輪到誰就是誰的開火倒數
+  afkDeadline: null,                   // 開火倒數會在幾點觸發（給畫面倒數用）
   afkChain: 0,                         // 這一次逾時觸發，已經連續自動開了幾發（上限 2）
+  pickTimer: null,                     // setTimeout id：三選一畫面的選卡倒數
+  pickDeadline: null,                  // 選卡倒數會在幾點觸發（給畫面倒數用）
 };
 
 // 這一局用哪套艦隊編制（海克斯 10 艘 / 經典 5 艘）
@@ -814,7 +817,11 @@ function resetMayhem() {
   S.lastInSeq = 0;
   clearTimeout(S.afkTimer);
   S.afkTimer = null;
+  S.afkDeadline = null;
   S.afkChain = 0;
+  clearTimeout(S.pickTimer);
+  S.pickTimer = null;
+  S.pickDeadline = null;
 }
 
 function enterBattle() {
@@ -857,8 +864,9 @@ function applyWarmonger(shooter, results) {
   if (realSunk && has(shooter, 'warmonger')) S.baseShots[shooter] += realSunk;
 }
 
-const AFK_MS = 20000;      // 輪到你但 20 秒沒開火，系統幫你隨機打一格
-const AFK_CHAIN_MS = 400;  // 連續射擊的第二發不用再等 20 秒，短暫延遲純粹是給畫面反應時間
+const AFK_FIRE_MS = 10000; // 輪到你、不是在選卡的時候，10 秒沒開火就自動打一發
+const AFK_PICK_MS = 20000; // 三選一的選卡畫面，20 秒沒選就自動幫你選一張
+const AFK_CHAIN_MS = 400;  // 連續射擊的第二發不用再等，短暫延遲純粹是給畫面反應時間
 
 function setTurn(side) {
   S.turn = side;
@@ -866,34 +874,60 @@ function setTurn(side) {
   scheduleAfk(side);
 }
 
-// 輪到自己就掛一個逾時計時器；換成對手或離開對戰畫面就清掉、重置連續計數。
+// 輪到自己、而且不是在選卡，就掛一個逾時計時器；換成對手、離開對戰畫面、
+// 或正在選卡（改由 armPickTimer 負責）就清掉、重置連續計數。
 function scheduleAfk(side) {
   clearTimeout(S.afkTimer);
   S.afkTimer = null;
-  if (!isPlayer() || side !== S.role || S.phase !== 'battle') { S.afkChain = 0; return; }
-  if (S.afkChain > 0 && S.afkChain < 2) {
-    // 這是同一輪逾時觸發的連續射擊（例如背水一戰的 2 槍），不用重新等滿 20 秒。
-    S.afkTimer = setTimeout(autoFire, AFK_CHAIN_MS);
-  } else {
-    S.afkChain = 0;
-    S.afkTimer = setTimeout(autoFire, AFK_MS);
-  }
+  S.afkDeadline = null;
+  if (!isPlayer() || side !== S.role || S.phase !== 'battle' || S.pending) { S.afkChain = 0; return; }
+  const ms = (S.afkChain > 0 && S.afkChain < 2) ? AFK_CHAIN_MS : AFK_FIRE_MS;
+  if (!(S.afkChain > 0 && S.afkChain < 2)) S.afkChain = 0;
+  S.afkTimer = setTimeout(autoFire, ms);
+  S.afkDeadline = Date.now() + ms;
 }
 
-// 任何一次點擊/按鍵都算「人還在」——不然玩家光是點開技能、盯著卡片考慮要瞄哪裡，
-// 時間一長也會被系統誤判成發呆，硬生生把她正在瞄準的技能取消掉、改打隨機一發。
-// 這裡只負責把 20 秒的鬧鐘重新按掉重壓，不影響「連續射擊兩次」那個短延遲的鏈。
-function noteActivity() {
-  if (!isMyTurn() || S.phase !== 'battle') return;
-  S.afkChain = 0;
-  scheduleAfk(S.role);
+// 選卡逾時：checkPick() 跳出三選一之後呼叫，20 秒沒點就隨機幫你選一張。
+function armPickTimer() {
+  clearTimeout(S.pickTimer);
+  S.pickTimer = setTimeout(autoPick, AFK_PICK_MS);
+  S.pickDeadline = Date.now() + AFK_PICK_MS;
+}
+
+function autoPick() {
+  S.pickTimer = null;
+  S.pickDeadline = null;
+  if (!S.pending || !S.pending.length) return;
+  const id = S.pending[Math.floor(Math.random() * S.pending.length)];
+  sysLog(`⏱ 20 秒沒有選擇，系統自動幫你選了 ⚡ ${augRef(id)}`);
+  choosePick(id);
+}
+
+// 上面的倒數顯示：輪到你時顯示「還剩幾秒沒開火」，選卡畫面顯示「還剩幾秒沒選卡」。
+function renderAfkCountdown() {
+  const fireEl = $('afkCountdown');
+  const pickEl = $('pickCountdown');
+  if (!fireEl || !pickEl) return;
+  if (S.pending && S.pickDeadline) {
+    pickEl.hidden = false;
+    pickEl.textContent = `⏱ 還有 ${Math.max(0, Math.ceil((S.pickDeadline - Date.now()) / 1000))} 秒自動選卡`;
+  } else {
+    pickEl.hidden = true;
+  }
+  if (!S.pending && isMyTurn() && S.afkDeadline) {
+    fireEl.hidden = false;
+    fireEl.textContent = `⏱ ${Math.max(0, Math.ceil((S.afkDeadline - Date.now()) / 1000))} 秒後自動開火`;
+  } else {
+    fireEl.hidden = true;
+  }
 }
 
 // 逾時自動開火：隨機挑一格還沒打過的敵方海域，當成一般射擊處理（不會自動使用強化技能，
 // 如果玩家當時正在瞄準某個主動技能，先取消那個模式，改打普通的一發）。
-// 「連續射擊兩次」只保證這次逾時觸發最多補 2 發——真的要打更多發，會回到正常的 20 秒等待。
+// 「連續射擊兩次」只保證這次逾時觸發最多補 2 發——真的要打更多發，會回到正常的等待。
 function autoFire() {
   S.afkTimer = null;
+  S.afkDeadline = null;
   if (!isMyTurn() || S.pending) return;
   if (S.mode) cancelMode();
   const pool = [];
@@ -903,8 +937,11 @@ function autoFire() {
   }
   if (!pool.length) return;
   const { x, y } = pool[Math.floor(Math.random() * pool.length)];
+  const wasChain = S.afkChain > 0;
   S.afkChain += 1;
-  sysLog(`⏱ 你 20 秒沒有動作，系統自動幫你開火（${cellName(x, y)}）`);
+  sysLog(wasChain
+    ? `⏱ 連續射擊：系統自動幫你補開一發（${cellName(x, y)}）`
+    : `⏱ ${AFK_FIRE_MS / 1000} 秒沒有動作，系統自動幫你開火（${cellName(x, y)}）`);
   fire(x, y, false, true);
 }
 
@@ -927,6 +964,10 @@ function checkPick() {
   const offers = rollOffers(S.aug[me].owned, exclude);
   if (!offers.length) return;
   S.pending = offers;
+  clearTimeout(S.afkTimer);   // 選卡期間不該同時倒數「沒開火」，交給 armPickTimer 接手
+  S.afkTimer = null;
+  S.afkDeadline = null;
+  armPickTimer();
   net.send({ type: 'picking' });
   sfx('join');
   renderPick();
@@ -934,6 +975,9 @@ function checkPick() {
 
 function choosePick(id) {
   if (!S.pending || !S.pending.includes(id)) return;
+  clearTimeout(S.pickTimer);
+  S.pickTimer = null;
+  S.pickDeadline = null;
   const me = S.role;
   S.pending = null;
   S.aug[me].owned.push(id);
@@ -2011,6 +2055,7 @@ function init() {
       return null;
     },
   });
+  setInterval(renderAfkCountdown, 250);
   initDevTools({
     getState: () => ({ phase: S.phase, mayhem: S.mayhem, owned: S.aug[S.role]?.owned }),
     onQuickReady() {
@@ -2121,10 +2166,6 @@ function init() {
   $('btnHelpLobby').addEventListener('click', () => openHelp());
   $('btnHelpClose').addEventListener('click', closeHelp);
   help.addEventListener('click', e => { if (e.target === help) closeHelp(); });
-
-  // 逾時自動開火只該抓真正發呆的人，不是還在盯著卡片考慮的人——隨便什麼點擊/按鍵都重新按掉鬧鐘。
-  document.addEventListener('pointerdown', noteActivity);
-  document.addEventListener('keydown', noteActivity);
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {

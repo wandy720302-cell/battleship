@@ -122,7 +122,7 @@
 
 <!-- ── 對戰 ─────────────────────────────────────────── -->
 <main class="screen battle" id="screenBattle" hidden>
-  <div class="turn-banner" id="turnBanner"><span id="turnText">準備開戰</span></div>
+  <div class="turn-banner" id="turnBanner"><span id="turnText">準備開戰</span><span class="afk-countdown" id="afkCountdown" hidden></span></div>
   <div class="action-banner" id="actionBanner" hidden></div>
   <div class="mode-bar" id="modeBar" hidden>
     <span id="modeText"></span>
@@ -189,6 +189,7 @@
   <div class="pick-card-wrap">
     <h2>⚡ 選擇一個海克斯強化</h2>
     <p class="pick-sub">三選一，選了就是你的。對手看得到你選了什麼。</p>
+    <p class="afk-countdown pick-countdown" id="pickCountdown" hidden></p>
     <div class="pick-cards" id="pickCards"></div>
   </div>
 </div>
