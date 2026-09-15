@@ -2,7 +2,7 @@
 // 判定原則跟本體一樣：誰的棋盤誰判，攻方只收到結果。
 import { SIZE, key, inBounds, cellsOf, occupancy, canPlace, receiveFire } from './game.js';
 
-export const PICK_EVERY = 10;  // 每開火 N 次選一次強化（第 0 次 = 第一回合）
+export const PICK_EVERY = 10;  // 每輪完 N 個回合選一次強化（第 0 回合 = 第一回合，一個回合不管開幾槍都只算 1）
 
 export const AUGMENTS = [
   { id: 'sonar',     name: '海克斯聲納', tier: 'silver', cat: '偵察', kind: 'active', once: true,

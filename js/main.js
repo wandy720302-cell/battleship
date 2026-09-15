@@ -62,7 +62,8 @@ const S = {
   lastInSeq: 0,            // 我收到的 fire 最大序號（守方去重）
   // ── 大亂鬥（兩邊都看得到的公開狀態） ──
   aug: { host: freshAug(), guest: freshAug() },
-  shotsFired: { host: 0, guest: 0 },   // 開火次數，決定何時選強化
+  turnsPlayed: { host: 0, guest: 0 },  // 已經完整輪完幾個回合，決定何時選強化（一個回合不管開幾槍都只算 1）
+  turnHolder: null,                    // 真正持有這回合的人，不會因為等結果時 S.turn 暫時變 null 就跟丟
   turnShots: { host: 0, guest: 0 },    // 這一輪已開幾槍（背水一戰用，額外射擊不計）
   bonus: { host: false, guest: false },// 下一發是不是「額外送的」（乘勝追擊／幽靈艦補償）
   extra: { host: 0, guest: 0 },        // 額外射擊次數（幽靈艦被擊沉時給防守方）
@@ -795,7 +796,8 @@ function startBattle(first, variant, mayhem) {
 function resetMayhem() {
   stopBGM();   // 新的一局開始，別讓上一局發動過的虛式「茈」BGM 繼續放
   S.aug = { host: freshAug(), guest: freshAug() };
-  S.shotsFired = { host: 0, guest: 0 };
+  S.turnsPlayed = { host: 0, guest: 0 };
+  S.turnHolder = null;
   S.turnShots = { host: 0, guest: 0 };
   S.bonus = { host: false, guest: false };
   S.extra = { host: 0, guest: 0 };
@@ -873,6 +875,13 @@ const AFK_PICK_MS = 20000; // 三選一的選卡畫面，20 秒沒選就自動�
 const AFK_CHAIN_MS = 400;  // 連續射擊的第二發不用再等，短暫延遲純粹是給畫面反應時間
 
 function setTurn(side) {
+  // 回合真的換人了（不是同一人連續射擊的中途），前一個持有者才算「完整輪完 1 個回合」。
+  // 用 turnHolder 而不是直接比對 S.turn，是因為射擊送出後到結果回來前 S.turn 會先變 null，
+  // 這段等待期不能被誤判成「換人了」，不然一個回合會被多算好幾次。
+  if (side && S.turnHolder && S.turnHolder !== side) {
+    S.turnsPlayed[S.turnHolder] = (S.turnsPlayed[S.turnHolder] || 0) + 1;
+  }
+  if (side) S.turnHolder = side;
   S.turn = side;
   if (side && side !== S.role) S.turnShots[side] = S.turnShots[side] || 0;
   scheduleAfk(side);
@@ -949,10 +958,12 @@ function autoFire() {
   fire(x, y, false, true);
 }
 
-// 該不該跳強化選單：輪到我、第 0/6/12… 次開火前、這個次數還沒選過。
+// 該不該跳強化選單：輪到我、第 0/10/20… 回合開始前、這個次數還沒選過。
+// 算的是「輪完幾個完整回合」，不是開了幾槍——不然一個回合裡連續射擊兩三發的技能
+// 會讓人選強化的頻率變得比別人快，這不是原本設計的意思。
 function checkPick() {
   if (!S.mayhem || !isMyTurn() || S.pending) return;
-  const n = S.shotsFired[S.role];
+  const n = S.turnsPlayed[S.role];
   if (n % PICK_EVERY !== 0 || S.pickedAt.has(n)) return;
   S.pickedAt.add(n);
   const me = S.role;
@@ -1201,7 +1212,6 @@ function fire(x, y, shiftKey = false, isAuto = false) {
 function fireCells(cells, kind) {
   unlockAudio();
   S.turn = null;
-  S.shotsFired[S.role] += 1;
   S.seq += 1;
   net.send({ type: 'fire', cells, kind, seq: S.seq });
   if (kind === 'cross') logLine($('battleLog'), '💣 十字爆破！', 'sys');
@@ -1915,9 +1925,9 @@ function renderHexPane() {
   const list = side => S.aug[side].owned.length
     ? `<ul class="hex-list">${S.aug[side].owned.map(id => card(side, id)).join('')}</ul>`
     : '<p class="hex-empty">還沒有強化</p>';
-  const next = PICK_EVERY - (S.shotsFired[me] % PICK_EVERY);
+  const next = PICK_EVERY - (S.turnsPlayed[me] % PICK_EVERY);
   pane.innerHTML = `
-    <div class="hex-sec"><h4>我的強化 <span class="hex-next">再開 ${next % PICK_EVERY === 0 ? PICK_EVERY : next} 槍可再選</span></h4>${list(me)}</div>
+    <div class="hex-sec"><h4>我的強化 <span class="hex-next">再過 ${next % PICK_EVERY === 0 ? PICK_EVERY : next} 回合可再選</span></h4>${list(me)}</div>
     <div class="hex-sec"><h4>${esc(nameOf(them))} 的強化</h4>${list(them)}</div>`;
 }
 
