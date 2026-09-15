@@ -880,6 +880,15 @@ function scheduleAfk(side) {
   }
 }
 
+// 任何一次點擊/按鍵都算「人還在」——不然玩家光是點開技能、盯著卡片考慮要瞄哪裡，
+// 時間一長也會被系統誤判成發呆，硬生生把她正在瞄準的技能取消掉、改打隨機一發。
+// 這裡只負責把 20 秒的鬧鐘重新按掉重壓，不影響「連續射擊兩次」那個短延遲的鏈。
+function noteActivity() {
+  if (!isMyTurn() || S.phase !== 'battle') return;
+  S.afkChain = 0;
+  scheduleAfk(S.role);
+}
+
 // 逾時自動開火：隨機挑一格還沒打過的敵方海域，當成一般射擊處理（不會自動使用強化技能，
 // 如果玩家當時正在瞄準某個主動技能，先取消那個模式，改打普通的一發）。
 // 「連續射擊兩次」只保證這次逾時觸發最多補 2 發——真的要打更多發，會回到正常的 20 秒等待。
@@ -2112,6 +2121,10 @@ function init() {
   $('btnHelpLobby').addEventListener('click', () => openHelp());
   $('btnHelpClose').addEventListener('click', closeHelp);
   help.addEventListener('click', e => { if (e.target === help) closeHelp(); });
+
+  // 逾時自動開火只該抓真正發呆的人，不是還在盯著卡片考慮的人——隨便什麼點擊/按鍵都重新按掉鬧鐘。
+  document.addEventListener('pointerdown', noteActivity);
+  document.addEventListener('keydown', noteActivity);
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
