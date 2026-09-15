@@ -51,7 +51,7 @@ export const AUGMENTS = [
   { id: 'fleetmaneuver', name: '艦隊重編', tier: 'gold', cat: '防禦', kind: 'active', once: true,
     desc: '不消耗回合。把一艘完全未受損的船朝任意方向平移 1 格（新位置需合法）。每局一次。' },
   { id: 'warmonger',  name: '戰爭狂熱',   tier: 'prism',  cat: '稜鏡', kind: 'passive',
-    desc: '每徹底擊沉一艘敵艦，你每回合的基礎開火次數永久 +1（會疊加）。' },
+    desc: '每徹底擊沉一艘敵艦，你每回合的基礎開火次數永久 +1（會疊加，上限每回合 3 發）。' },
   { id: 'dreadnought', name: '無畏號裝甲', tier: 'prism', cat: '稜鏡', kind: 'instant',
     desc: '指定你的旗艦（最大艘的船）。它的每一格要被打中 2 次才算受損，第 1 次只會看到「裝甲彈開」。' },
   { id: 'orbitalstrike', name: '軌道打擊', tier: 'prism', cat: '稜鏡', kind: 'active', once: true,

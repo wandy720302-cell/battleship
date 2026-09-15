@@ -858,10 +858,14 @@ function advanceTurn(shooter, agg) {
   });
 }
 
-// 戰爭狂熱：這一波結果裡只要有真船（不含假船）被徹底擊沉，攻方永久多 1 發基礎開火。
+const WARMONGER_CAP = 3;   // 太強了：每回合基礎開火次數最多疊到 3，不能無限往上疊
+
+// 戰爭狂熱：這一波結果裡只要有真船（不含假船）被徹底擊沉，攻方永久多 1 發基礎開火，封頂 3 發。
 function applyWarmonger(shooter, results) {
   const realSunk = results.filter(r => r.sunk && !r.sunk.decoy).length;
-  if (realSunk && has(shooter, 'warmonger')) S.baseShots[shooter] += realSunk;
+  if (realSunk && has(shooter, 'warmonger')) {
+    S.baseShots[shooter] = Math.min(WARMONGER_CAP, S.baseShots[shooter] + realSunk);
+  }
 }
 
 const AFK_FIRE_MS = 10000; // 輪到你、不是在選卡的時候，10 秒沒開火就自動打一發
