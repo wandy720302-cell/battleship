@@ -945,6 +945,56 @@ input::placeholder { color: var(--text-mute); }
 .chat-form { display: flex; gap: 7px; margin-top: 11px; }
 .chat-form input { padding: 8px 11px; font-size: .88rem; }
 
+/* ── 嘲諷貼圖：聊天框旁邊的按鈕 + 下拉選單 ── */
+.taunt-wrap { position: relative; display: flex; }
+.taunt-btn:disabled { opacity: .45; cursor: not-allowed; }
+.taunt-picker {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: repeat(3, 64px);
+  gap: 6px;
+  padding: 8px;
+  background: var(--panel, #1b1f2a);
+  border: 1px solid var(--border, rgba(255,255,255,.12));
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(0,0,0,.4);
+}
+.taunt-item {
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  background: rgba(255,255,255,.04);
+  transition: border-color .12s, transform .12s;
+}
+.taunt-item:hover { border-color: var(--gold, #f2c14e); transform: scale(1.05); }
+.taunt-item img { display: block; width: 64px; height: 64px; object-fit: cover; }
+
+/* ── 收到嘲諷貼圖：畫面正中央彈出，跟棋盤同大 ── */
+#tauntFlash {
+  position: fixed;
+  inset: 0;
+  z-index: 585;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2,0,8,.55);
+  animation: cutscene-in .25s ease-out;
+  cursor: pointer;
+}
+#tauntFlash.out { animation: cutscene-out .22s ease-in forwards; }
+.taunt-flash-img {
+  display: block;
+  object-fit: cover;
+  border-radius: 16px;
+  box-shadow: 0 0 50px rgba(0,0,0,.6), 0 0 0 4px rgba(242,193,78,.35);
+  animation: imgflash-pop .4s cubic-bezier(.2,.9,.3,1.2) backwards;
+}
+
 /* 結算 */
 .overlay {
   position: fixed;

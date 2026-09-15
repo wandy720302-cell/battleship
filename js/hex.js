@@ -60,6 +60,8 @@ export const AUGMENTS = [
     desc: '只剩最後一艘船時，每回合固定開火 2 次；該回合只要有命中，隨機修復自己 1 個受損部位（不能復活已沉的船）。' },
   { id: 'romantic168', name: '浪漫168突襲', tier: 'prism', cat: '稜鏡', kind: 'active', once: true,
     desc: '放棄本回合開火，直接隨機偷走對手一張已擁有的強化（變成你的）。發動時雙方畫面會跳出專屬圖片。每局一次。' },
+  { id: 'kagura', name: '火之神神樂', tier: 'prism', cat: '稜鏡', kind: 'active', once: true,
+    desc: '只有你只剩最後 2 艘船時才可能被抽到。消耗回合，選一格為圓心，半徑 5 格的正圓範圍全部開火。發動時雙方畫面播放專屬過場動畫與背景音樂。每局一次。' },
 ];
 
 // 虛式「茈」的出場條件：只剩最後 2 艘船才有機率被抽到（機率仍照階級權重，不保證抽到）。
@@ -219,6 +221,18 @@ export function squareCells2x2(x, y) {
   const sy = Math.min(Math.max(y, 0), SIZE - 2);
   const cells = [];
   for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) cells.push({ x: sx + dx, y: sy + dy });
+  return cells;
+}
+
+// 火之神神樂：以點擊格為圓心、半徑 5 格的正圓（歐氏距離），棋盤邊界自然裁切不平移。
+export function circleCells(cx, cy, r = 5) {
+  const cells = [];
+  for (let y = Math.max(0, cy - r); y <= Math.min(SIZE - 1, cy + r); y++) {
+    for (let x = Math.max(0, cx - r); x <= Math.min(SIZE - 1, cx + r); x++) {
+      const dx = x - cx, dy = y - cy;
+      if (dx * dx + dy * dy <= r * r) cells.push({ x, y });
+    }
+  }
   return cells;
 }
 

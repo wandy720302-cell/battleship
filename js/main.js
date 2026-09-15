@@ -11,7 +11,7 @@ import {
   advanceTurn as hexAdvanceTurn,
   nearShip, sonarPresent, randomDecoy, randomShipCell, isUndamaged,
   relocateUndamaged, decoyAsShip, resolveCell,
-  lineCells, linePresent, squareCells2x2, shiftShip, healRandomCell, randomEmptyCell,
+  lineCells, linePresent, squareCells2x2, shiftShip, healRandomCell, randomEmptyCell, circleCells,
 } from './hex.js';
 import { createNet, makeRoomCode } from './net.js';
 import { sfx, setSoundEnabled, isSoundEnabled, unlockAudio, playBGM, stopBGM } from './audio.js';
@@ -19,6 +19,7 @@ import { initBossMode } from './boss.js';
 import { initExcelMode } from './excel.js';
 import { initCutscene } from './cutscene.js';
 import { initImageFlash } from './imageflash.js';
+import { initTaunt } from './taunt.js';
 import { initDevTools } from './devtools.js';
 import {
   $, buildBoard, paintMyBoard, paintEnemyBoard, renderDock,
@@ -80,6 +81,9 @@ const S = {
   // ── 幽靈船 ──
   ghostPhase: null,                    // null | 'placing'(我在佈署) | 'waiting'(等對方佈署)
   ghostOut: { host: false, guest: false },  // 誰的幽靈船已經登場
+  // ── 逾時自動開火（防呆，怕有人開著房間發呆）──
+  afkTimer: null,                      // setTimeout id，輪到誰就是誰的計時器
+  afkChain: 0,                         // 這一次逾時觸發，已經連續自動開了幾發（上限 2）
 };
 
 // 這一局用哪套艦隊編制（海克斯 10 艘 / 經典 5 艘）
@@ -89,6 +93,7 @@ const totalShips = () => spec().length;
 // 虛式「茈」發動時的專屬 BGM：不管哪一方發動，兩邊都會聽到，一直循環到這局結束或重來。
 const HOLLOWPURPLE_BGM = 'assets/hollowpurple-bgm.mp3';
 const ROMANTIC168_IMG = 'assets/romantic168.jpg';
+const KAGURA_BGM = 'assets/kagura-bgm.m4a';
 
 const opposite = side => (side === 'host' ? 'guest' : 'host');
 const isPlayer = () => S.role === 'host' || S.role === 'guest';
@@ -108,6 +113,7 @@ let boss = null;   // 假 VSCode（純遮羞布）
 let excel = null;  // 假 Excel（可以在裡面打）
 let cutscene = null;  // 虛式「茈」發動時的過場
 let imgFlash = null;  // 浪漫168突襲等技能發動時的閃圖
+let taunt = null;     // 聊天室的嘲諷貼圖
 let augTips = null;
 
 // ── 網路事件 ─────────────────────────────────────────
@@ -221,6 +227,11 @@ function onMessage(msg) {
 
     case 'chat':
       chatLine(msg.__name || from, msg.text, false);
+      sfx('chat');
+      break;
+
+    case 'taunt':
+      taunt?.show(msg.id);
       sfx('chat');
       break;
 
@@ -801,6 +812,9 @@ function resetMayhem() {
   S.seq = 0;
   S.lastSeq = 0;
   S.lastInSeq = 0;
+  clearTimeout(S.afkTimer);
+  S.afkTimer = null;
+  S.afkChain = 0;
 }
 
 function enterBattle() {
@@ -843,9 +857,46 @@ function applyWarmonger(shooter, results) {
   if (realSunk && has(shooter, 'warmonger')) S.baseShots[shooter] += realSunk;
 }
 
+const AFK_MS = 20000;      // 輪到你但 20 秒沒開火，系統幫你隨機打一格
+const AFK_CHAIN_MS = 400;  // 連續射擊的第二發不用再等 20 秒，短暫延遲純粹是給畫面反應時間
+
 function setTurn(side) {
   S.turn = side;
   if (side && side !== S.role) S.turnShots[side] = S.turnShots[side] || 0;
+  scheduleAfk(side);
+}
+
+// 輪到自己就掛一個逾時計時器；換成對手或離開對戰畫面就清掉、重置連續計數。
+function scheduleAfk(side) {
+  clearTimeout(S.afkTimer);
+  S.afkTimer = null;
+  if (!isPlayer() || side !== S.role || S.phase !== 'battle') { S.afkChain = 0; return; }
+  if (S.afkChain > 0 && S.afkChain < 2) {
+    // 這是同一輪逾時觸發的連續射擊（例如背水一戰的 2 槍），不用重新等滿 20 秒。
+    S.afkTimer = setTimeout(autoFire, AFK_CHAIN_MS);
+  } else {
+    S.afkChain = 0;
+    S.afkTimer = setTimeout(autoFire, AFK_MS);
+  }
+}
+
+// 逾時自動開火：隨機挑一格還沒打過的敵方海域，當成一般射擊處理（不會自動使用強化技能，
+// 如果玩家當時正在瞄準某個主動技能，先取消那個模式，改打普通的一發）。
+// 「連續射擊兩次」只保證這次逾時觸發最多補 2 發——真的要打更多發，會回到正常的 20 秒等待。
+function autoFire() {
+  S.afkTimer = null;
+  if (!isMyTurn() || S.pending) return;
+  if (S.mode) cancelMode();
+  const pool = [];
+  for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
+    const k = key(x, y);
+    if (canTarget(S.enemy, k)) pool.push({ x, y });
+  }
+  if (!pool.length) return;
+  const { x, y } = pool[Math.floor(Math.random() * pool.length)];
+  S.afkChain += 1;
+  sysLog(`⏱ 你 20 秒沒有動作，系統自動幫你開火（${cellName(x, y)}）`);
+  fire(x, y, false, true);
 }
 
 // 該不該跳強化選單：輪到我、第 0/6/12… 次開火前、這個次數還沒選過。
@@ -860,7 +911,7 @@ function checkPick() {
   if (!S.myFleet.some(isUndamaged)) exclude.push('blink', 'rebuild', 'fleetmaneuver');
   const carrier = S.myFleet.find(s => s.id === 'carrier');
   if (!carrier || carrier.hits.length >= carrier.size) exclude.push('armor', 'dreadnought');
-  if (!hollowPurpleEligible(remainingShips(S.myFleet))) exclude.push('hollowpurple');
+  if (!hollowPurpleEligible(remainingShips(S.myFleet))) exclude.push('hollowpurple', 'kagura');
   // 幽靈艦隊／誘餌浮標共用同一個假船欄位，同時擁有沒有意義，讓後選的別再擠掉前一張的機會
   if (S.aug[me].owned.includes('ghost')) exclude.push('decoybuoy');
   if (S.aug[me].owned.includes('decoybuoy')) exclude.push('ghost');
@@ -888,6 +939,7 @@ function choosePick(id) {
     else { sysLog('海域太滿，找不到地方放'); toast('沒空位可以放', 'bad'); }
   }
   $('pickModal').hidden = true;
+  scheduleAfk(S.turn);   // 選完卡才真正回到「等你開火」，逾時計時器要從這裡重新起算
   render();
 }
 
@@ -903,6 +955,7 @@ function useActive(id) {
     case 'sectorscan':
     case 'orbitalstrike':
     case 'hollowpurple':
+    case 'kagura':
       S.mode = id;
       break;
     case 'blink':
@@ -1022,8 +1075,9 @@ function doSectorScan(x, y, shiftKey) {
   render();
 }
 
-function fire(x, y, shiftKey = false) {
+function fire(x, y, shiftKey = false, isAuto = false) {
   if (!isMyTurn() || S.pending) return;
+  if (!isAuto) S.afkChain = 0;   // 玩家自己出手了，證明人還在，逾時連鎖計數歸零
   if (S.mode === 'sonar' || S.mode === 'basicsonar') return doSonar(S.mode, x, y);
   if (S.mode === 'sectorscan') return doSectorScan(x, y, shiftKey);
   if (S.mode === 'cross') {
@@ -1055,9 +1109,18 @@ function fire(x, y, shiftKey = false) {
     if (!cells.length) return toast('這 4 列全都打過了，換一列', 'bad');
     S.aug[S.role].used.hollowpurple = true;
     S.mode = null;
-    cutscene?.play();           // 攻方自己也要看到——這是本局最戲劇性的一擊
+    cutscene?.play('hollowpurple');   // 攻方自己也要看到——這是本局最戲劇性的一擊
     playBGM(HOLLOWPURPLE_BGM);
     return fireCells(cells, 'hollowpurple');
+  }
+  if (S.mode === 'kagura') {
+    const cells = circleCells(x, y, 5).filter(c => canTarget(S.enemy, key(c.x, c.y)));
+    if (!cells.length) return toast('這個圓形範圍全都打過了，換一個圓心', 'bad');
+    S.aug[S.role].used.kagura = true;
+    S.mode = null;
+    cutscene?.play('kagura');
+    playBGM(KAGURA_BGM);
+    return fireCells(cells, 'kagura');
   }
   if (S.mode) return;
   const k = key(x, y);
@@ -1089,6 +1152,7 @@ function fireCells(cells, kind) {
   if (kind === 'heavyartillery') logLine($('battleLog'), '💥 重型火砲：轟炸 2×2 區域！', 'sys');
   if (kind === 'orbitalstrike') logLine($('battleLog'), '🛰 軌道打擊：整條線翻開！', 'sunk');
   if (kind === 'hollowpurple') logLine($('battleLog'), '⚡ 你發動了虛式「茈」！', 'sunk');
+  if (kind === 'kagura') logLine($('battleLog'), '🔥 你發動了火之神神樂！', 'sunk');
   sfx('fire');
   render();
 }
@@ -1126,8 +1190,13 @@ function handleIncomingFire(msg) {
   if (msg.kind === 'orbitalstrike') logLine($('battleLog'), `${who} 發動了 🛰 軌道打擊！`, 'sunk');
   if (msg.kind === 'hollowpurple') {
     logLine($('battleLog'), `${who} 發動了 ⚡ 虛式「茈」！`, 'sunk');
-    cutscene?.play();
+    cutscene?.play('hollowpurple');
     playBGM(HOLLOWPURPLE_BGM);
+  }
+  if (msg.kind === 'kagura') {
+    logLine($('battleLog'), `${who} 發動了 🔥 火之神神樂！`, 'sunk');
+    cutscene?.play('kagura');
+    playBGM(KAGURA_BGM);
   }
   let loudest = 'miss';
   for (const r of results) {
@@ -1433,7 +1502,8 @@ function specResult(msg) {
   const who = `<b>${esc(nameOf(shooter))}</b>`;
   if (msg.kind === 'heavyartillery') logLine($('battleLog'), `${who} 發射重型火砲！`, 'sys');
   if (msg.kind === 'orbitalstrike') logLine($('battleLog'), `${who} 發動了 🛰 軌道打擊！`, 'sunk');
-  if (msg.kind === 'hollowpurple') { cutscene?.play(); playBGM(HOLLOWPURPLE_BGM); }
+  if (msg.kind === 'hollowpurple') { cutscene?.play('hollowpurple'); playBGM(HOLLOWPURPLE_BGM); }
+  if (msg.kind === 'kagura') { cutscene?.play('kagura'); playBGM(KAGURA_BGM); }
   let loudest = 'miss';
   for (const r of results) {
     const at = cellName(r.x, r.y);
@@ -1749,6 +1819,7 @@ function renderModeBar() {
     'sonar': '🔊 聲納：點敵方海域一格，掃描它周圍 3×3（消耗回合）',
     'cross': '💣 十字爆破：點敵方海域一格，同時打上下左右 5 格',
     'hollowpurple': '⚡ 虛式「茈」：點敵方海域一格，以這列為中心的 4 列（40 格）全部開火',
+    'kagura': '🔥 火之神神樂：點敵方海域一格為圓心，半徑 5 格的正圓範圍全部開火',
     'blink': '🌀 緊急躍遷：點我方海域一艘「完全未受損」的船',
     'blink-place': '🌀 躍遷：點目標位置放下，R 旋轉（不能放在被打過的格子）',
     'basicsonar': '🔊 初級聲納：點敵方海域一格，掃描它周圍 3×3（消耗回合）',
@@ -1921,6 +1992,16 @@ function init() {
   };
   cutscene = initCutscene();
   imgFlash = initImageFlash();
+  taunt = initTaunt({
+    onSend(id) { net?.send({ type: 'taunt', id }); taunt.show(id); },
+    getBoardEl() {
+      const enemy = $('enemyBoard');
+      if (enemy && enemy.offsetParent) return enemy;
+      const mine = $('myBoard');
+      if (mine && mine.offsetParent) return mine;
+      return null;
+    },
+  });
   initDevTools({
     getState: () => ({ phase: S.phase, mayhem: S.mayhem, owned: S.aug[S.role]?.owned }),
     onQuickReady() {
@@ -2041,6 +2122,7 @@ function init() {
       // 兩個監聽器都會收到同一次按鍵，於是「跳過過場」變成「跳過過場+跳進 Excel」）。
       if (cutscene?.active) cutscene.close();
       else if (imgFlash?.active) imgFlash.close();
+      else if (taunt?.active) taunt.close();
       else if (augTips?.isOpen()) augTips.hide();
       else if (!help.hidden) closeHelp();
       else if (S.mode && !excel.active && !boss.active) { cancelMode(); render(); }

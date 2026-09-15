@@ -1,0 +1,9 @@
+[
+  { "id": "point-finger", "file": "point-finger.jpg", "label": "點名警告" },
+  { "id": "point-head", "file": "point-head.jpg", "label": "動動腦" },
+  { "id": "eating-disgusted", "file": "eating-disgusted.jpg", "label": "嫌棄臉" },
+  { "id": "punch", "file": "punch.jpg", "label": "揍下去" },
+  { "id": "tattoo-lying-down", "file": "tattoo-lying-down.jpg", "label": "躺平認輸" },
+  { "id": "dog-stare", "file": "dog-stare.jpg", "label": "狗狗無語" },
+  { "id": "you-are-already-dead", "file": "you-are-already-dead.jpg", "label": "你已經死了" }
+]
