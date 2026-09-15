@@ -67,8 +67,10 @@ const S = {
   turnShots: { host: 0, guest: 0 },    // 這一輪已開幾槍（背水一戰用，額外射擊不計）
   bonus: { host: false, guest: false },// 下一發是不是「額外送的」（乘勝追擊／幽靈艦補償）
   extra: { host: 0, guest: 0 },        // 額外射擊次數（幽靈艦被擊沉時給防守方）
-  baseShots: { host: 1, guest: 1 },    // 戰爭狂熱：永久疊加的每回合基礎開火次數
-  pickedAt: new Set(),                 // 已經在哪些開火次數選過了
+  baseShots: { host: 1, guest: 1 },    // 戰爭狂熱：疊加中的每回合基礎開火次數
+  warmongerGap: { host: 0, guest: 0 },        // 戰爭狂熱：連續幾個回合沒有新戰績了
+  warmongerHitThisTurn: { host: false, guest: false }, // 這個回合有沒有靠戰爭狂熱加過分
+  pickedAt: new Set(),                 // 已經在哪些回合選過了
   pending: null,                       // 正在選的三個強化 id
   mode: null,                          // null | sonar | cross | blink | blink-place | ...(見 useActive)
   blink: null,                         // 躍遷中撿起的船原位（取消用）
@@ -802,6 +804,8 @@ function resetMayhem() {
   S.bonus = { host: false, guest: false };
   S.extra = { host: 0, guest: 0 };
   S.baseShots = { host: 1, guest: 1 };
+  S.warmongerGap = { host: 0, guest: 0 };
+  S.warmongerHitThisTurn = { host: false, guest: false };
   S.pickedAt = new Set();
   S.pending = null;
   S.mode = null;
@@ -867,7 +871,28 @@ function applyWarmonger(shooter, results) {
   const realSunk = results.filter(r => r.sunk && !r.sunk.decoy).length;
   if (realSunk && has(shooter, 'warmonger')) {
     S.baseShots[shooter] = Math.min(WARMONGER_CAP, S.baseShots[shooter] + realSunk);
+    S.warmongerGap[shooter] = 0;
+    S.warmongerHitThisTurn[shooter] = true;
   }
+}
+
+// 戰爭狂熱降溫：這一整個回合都沒有新戰績，空手回合數 +1；連續空手超過 2 回合（第 3 回合）
+// 就把疊到的基礎開火次數打回 1，逼玩家得一直保持連勝才守得住這個加成。
+function decayWarmonger(side) {
+  if (!has(side, 'warmonger') || S.baseShots[side] <= 1) { S.warmongerHitThisTurn[side] = false; return; }
+  if (S.warmongerHitThisTurn[side]) {
+    S.warmongerGap[side] = 0;
+  } else {
+    S.warmongerGap[side] += 1;
+    if (S.warmongerGap[side] > 2) {
+      S.baseShots[side] = 1;
+      S.warmongerGap[side] = 0;
+      sysLog(side === S.role
+        ? '⚔ 戰爭狂熱：太久沒有新的擊沉戰績，你的基礎開火次數降回 1 發'
+        : `⚔ ${esc(nameOf(side))} 的戰爭狂熱降溫了，基礎開火次數降回 1 發`);
+    }
+  }
+  S.warmongerHitThisTurn[side] = false;
 }
 
 const AFK_FIRE_MS = 10000; // 輪到你、不是在選卡的時候，10 秒沒開火就自動打一發
@@ -880,6 +905,7 @@ function setTurn(side) {
   // 這段等待期不能被誤判成「換人了」，不然一個回合會被多算好幾次。
   if (side && S.turnHolder && S.turnHolder !== side) {
     S.turnsPlayed[S.turnHolder] = (S.turnsPlayed[S.turnHolder] || 0) + 1;
+    decayWarmonger(S.turnHolder);
   }
   if (side) S.turnHolder = side;
   S.turn = side;
