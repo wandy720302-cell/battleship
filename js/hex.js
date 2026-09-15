@@ -53,7 +53,7 @@ export const AUGMENTS = [
   { id: 'warmonger',  name: '戰爭狂熱',   tier: 'prism',  cat: '稜鏡', kind: 'passive',
     desc: '每徹底擊沉一艘敵艦，你每回合的基礎開火次數永久 +1（會疊加）。' },
   { id: 'dreadnought', name: '無畏號裝甲', tier: 'prism', cat: '稜鏡', kind: 'instant',
-    desc: '指定你的旗艦（最大艘的船）。它的每一格要被打中 3 次才算受損，前 2 次都只會看到「裝甲彈開」。' },
+    desc: '指定你的旗艦（最大艘的船）。它的每一格要被打中 2 次才算受損，第 1 次只會看到「裝甲彈開」。' },
   { id: 'orbitalstrike', name: '軌道打擊', tier: 'prism', cat: '稜鏡', kind: 'active', once: true,
     desc: '放棄本回合所有開火，指定一整條橫列或直行，該線上所有敵艦部位直接翻開並視為命中 1 次。每局一次。' },
   { id: 'laststand2', name: '背水一戰（新版）', tier: 'prism', cat: '稜鏡', kind: 'passive',
@@ -335,9 +335,9 @@ export function resolveCell(def, x, y) {
     return { x, y, hit: false, armor: true, sunk: null };
   }
   // 無畏號裝甲：跟反應裝甲共用「carrier = 旗艦」的假設（兩套現有編制裡最大艘的都是它），
-  // 差別是要彈開 2 次才開始算真的受損。兩者都有的話，反應裝甲先判到就不會再進這裡——
+  // 彈開 1 次、第 2 次才算真的受損。兩者都有的話，反應裝甲先判到就不會再進這裡——
   // 沒特別處理疊加，效果不會加成。
-  if (def.dreadnought && target?.ship.id === 'carrier' && (def.dreadnoughtHits.get(k) || 0) < 2) {
+  if (def.dreadnought && target?.ship.id === 'carrier' && (def.dreadnoughtHits.get(k) || 0) < 1) {
     def.dreadnoughtHits.set(k, (def.dreadnoughtHits.get(k) || 0) + 1);
     return { x, y, hit: false, armor: true, sunk: null };
   }
